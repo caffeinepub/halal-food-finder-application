@@ -1,2 +1,8 @@
-# halal-food-finder-application
-Exported from Caffeine project: Halal Food Finder Application
+## Halal Food Finder Application
+
+To run app build and run docker image:
+
+```
+docker build -t app .
+docker run -it --network host app
+```

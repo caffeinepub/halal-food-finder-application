@@ -1,0 +1,27 @@
+{
+  "canisters": {
+    "backend": {
+      "type": "custom",
+      "candid": "src/backend/main.did",
+      "wasm": "src/backend/backend.wasm",
+      "build": "/home/ubuntu/.motoko/moc/0.16.3-implicits-26/bin/moc --implicit-package core --default-persistent-actors -no-check-ir --actor-idl src/backend/system-idl --package core /home/ubuntu/.motoko/core/implicits-20 src/backend/main.mo -o src/backend/backend.wasm && /home/ubuntu/.motoko/moc/0.16.3-implicits-26/bin/moc --implicit-package core --default-persistent-actors --idl --package core /home/ubuntu/.motoko/core/implicits-20 src/backend/main.mo -o src/backend/main.did",
+      "declarations": {
+        "output": "src/frontend/src/declarations/backend",
+        "bindings": ["ts"],
+        "env_override": null
+      }
+    },
+    "frontend": {
+      "type": "assets",
+      "source": ["src/frontend/dist"],
+      "dependencies": ["backend"]
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": ""
+    }
+  },
+  "output_env_file": ".env",
+  "version": 1
+}
