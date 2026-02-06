@@ -28,7 +28,17 @@ export interface http_request_result {
 }
 export interface _SERVICE {
   'clearCache' : ActorMethod<[string], undefined>,
+  'getCacheContents' : ActorMethod<[], Array<[string, string, Time]>>,
+  'getCacheCount' : ActorMethod<[], bigint>,
+  'getCacheExpiration' : ActorMethod<[], bigint>,
+  'getCacheTimeRemaining' : ActorMethod<[string], Time>,
+  'getCachedData' : ActorMethod<[string], [] | [string]>,
   'getErrorLog' : ActorMethod<[], Array<[Time, string]>>,
+  'getErrorLogCount' : ActorMethod<[], bigint>,
+  'getIpApiGeolocation' : ActorMethod<[], string>,
+  'getMaxConsecutiveErrors' : ActorMethod<[], bigint>,
+  'getMaxLogEntries' : ActorMethod<[], bigint>,
+  'getRequestStats' : ActorMethod<[], [bigint, bigint, bigint]>,
   'ping' : ActorMethod<[], undefined>,
   'proxyExternalApiGet' : ActorMethod<[string], string>,
   'proxyExternalApiPost' : ActorMethod<[string, string], string>,

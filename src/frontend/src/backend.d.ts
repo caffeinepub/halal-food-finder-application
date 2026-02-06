@@ -28,7 +28,17 @@ export interface http_request_result {
 }
 export interface backendInterface {
     clearCache(prefix: string): Promise<void>;
+    getCacheContents(): Promise<Array<[string, string, Time]>>;
+    getCacheCount(): Promise<bigint>;
+    getCacheExpiration(): Promise<bigint>;
+    getCacheTimeRemaining(key: string): Promise<Time>;
+    getCachedData(key: string): Promise<string | null>;
     getErrorLog(): Promise<Array<[Time, string]>>;
+    getErrorLogCount(): Promise<bigint>;
+    getIpApiGeolocation(): Promise<string>;
+    getMaxConsecutiveErrors(): Promise<bigint>;
+    getMaxLogEntries(): Promise<bigint>;
+    getRequestStats(): Promise<[bigint, bigint, bigint]>;
     ping(): Promise<void>;
     proxyExternalApiGet(url: string): Promise<string>;
     proxyExternalApiPost(url: string, body: string): Promise<string>;

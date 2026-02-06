@@ -1,4 +1,3 @@
-# Rust-only sandbox (no Motoko compiler)
 FROM ubuntu:24.04 AS base
 
 ENV TZ=UTC
@@ -33,13 +32,6 @@ RUN mkdir -p /etc/apt/keyrings \
 RUN npm install -g pnpm@latest-10 \
     && pnpm --version
 
-# Install didc
-RUN <<EOF
-curl -L https://github.com/dfinity/candid/releases/download/2024-05-14/didc-linux64 -o didc
-install didc /usr/local/bin
-didc --version
-EOF
-
 # Install mops
 RUN <<EOF
 npm i -g ic-mops@1.11.1
@@ -52,24 +44,6 @@ ENV HOME=/home/ubuntu
 RUN mkdir -p /home/ubuntu/bin
 ENV PATH=/home/ubuntu/.mops/bin:/home/ubuntu/bin:/home/ubuntu/.local/share/dfx/bin:${PATH}
 
-# Install Rust and necessary tools
-RUN <<EOF
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-. "$HOME/.cargo/env"
-rustup target add wasm32-unknown-unknown
-cargo install candid-extractor ic-wasm
-EOF
-
-ENV PATH="/home/ubuntu/.cargo/bin:${PATH}"
-
-# Install dfx
-ARG DFXVM_INIT_YES=true
-ARG DFX_VERSION=0.29.0
-ENV PATH="/home/ubuntu/.local/share/dfx/bin:$PATH"
-RUN <<EOF
-curl -fsSL https://internetcomputer.org/install.sh | sh
-dfx cache install
-EOF
 
 # Optimized PNPM configuration for better caching
 RUN mkdir -p /home/ubuntu/.config/pnpm /home/ubuntu/.local/share/pnpm/store /home/ubuntu/.cache/pnpm
@@ -85,21 +59,17 @@ EOF
 ENV PNPM_HOME="/home/ubuntu/.local/share/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
-
-ARG DFXVM_INIT_YES=true
-ARG DFX_VERSION=0.29.0
-ENV PATH="/home/ubuntu/.local/share/dfx/bin:$PATH"
+# Install icp-cli - installer puts binary in ~/.cargo/bin
 RUN <<EOF
-curl -fsSL https://internetcomputer.org/install.sh | sh
-dfx cache install
+set -e
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/dfinity/icp-cli/releases/download/v0.1.0-beta.3/icp-cli-installer.sh | sh
+# Verify installation
+ls -la /home/ubuntu/.cargo/bin/
+/home/ubuntu/.cargo/bin/icp --version
 EOF
 
-
-USER ubuntu
-WORKDIR /home/ubuntu
-ENV HOME=/home/ubuntu
-RUN mkdir -p /home/ubuntu/bin
-ENV PATH=/home/ubuntu/.mops/bin:/home/ubuntu/bin:${PATH}
+# Add icp-cli to PATH for the ubuntu user
+ENV PATH="/home/ubuntu/.cargo/bin:${PATH}"
 
 # Install Motoko compiler
 RUN <<EOF
@@ -147,6 +117,10 @@ SOURCE_SUB_FOLDER="motoko-base-moc-${BASE_LIB_VERSION}/src"
 curl -L "$BASE_LIB_URL" | tar -xz --strip-components=2 -C "$BASE_LIB_INSTALL_DIR" "$SOURCE_SUB_FOLDER"
 EOF
 
+# Set Motoko environment variables for deploy.sh and other scripts
+ENV MOC_PATH="/home/ubuntu/.motoko/moc/0.16.3-implicits-26/bin/moc"
+ENV MOTOKO_CORE="/home/ubuntu/.motoko/core/implicits-20"
+ENV MOTOKO_BASE="/home/ubuntu/.motoko/base/0.16.1"
 
 WORKDIR /workdir
 
@@ -154,6 +128,6 @@ WORKDIR /workdir
 COPY --chown=ubuntu:ubuntu . /workdir/
 
 RUN chmod +x /workdir/deploy.sh
-RUN chmod +x /workdir/src/build.sh
 
 ENTRYPOINT ["/workdir/deploy.sh"]
+

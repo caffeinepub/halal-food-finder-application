@@ -110,7 +110,17 @@ export interface http_request_result {
 }
 export interface backendInterface {
     clearCache(prefix: string): Promise<void>;
+    getCacheContents(): Promise<Array<[string, string, Time]>>;
+    getCacheCount(): Promise<bigint>;
+    getCacheExpiration(): Promise<bigint>;
+    getCacheTimeRemaining(key: string): Promise<Time>;
+    getCachedData(key: string): Promise<string | null>;
     getErrorLog(): Promise<Array<[Time, string]>>;
+    getErrorLogCount(): Promise<bigint>;
+    getIpApiGeolocation(): Promise<string>;
+    getMaxConsecutiveErrors(): Promise<bigint>;
+    getMaxLogEntries(): Promise<bigint>;
+    getRequestStats(): Promise<[bigint, bigint, bigint]>;
     ping(): Promise<void>;
     proxyExternalApiGet(url: string): Promise<string>;
     proxyExternalApiPost(url: string, body: string): Promise<string>;
@@ -132,6 +142,76 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getCacheContents(): Promise<Array<[string, string, Time]>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCacheContents();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCacheContents();
+            return result;
+        }
+    }
+    async getCacheCount(): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCacheCount();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCacheCount();
+            return result;
+        }
+    }
+    async getCacheExpiration(): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCacheExpiration();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCacheExpiration();
+            return result;
+        }
+    }
+    async getCacheTimeRemaining(arg0: string): Promise<Time> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCacheTimeRemaining(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCacheTimeRemaining(arg0);
+            return result;
+        }
+    }
+    async getCachedData(arg0: string): Promise<string | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCachedData(arg0);
+                return from_candid_opt_n1(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCachedData(arg0);
+            return from_candid_opt_n1(this._uploadFile, this._downloadFile, result);
+        }
+    }
     async getErrorLog(): Promise<Array<[Time, string]>> {
         if (this.processError) {
             try {
@@ -144,6 +224,84 @@ export class Backend implements backendInterface {
         } else {
             const result = await this.actor.getErrorLog();
             return result;
+        }
+    }
+    async getErrorLogCount(): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getErrorLogCount();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getErrorLogCount();
+            return result;
+        }
+    }
+    async getIpApiGeolocation(): Promise<string> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getIpApiGeolocation();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getIpApiGeolocation();
+            return result;
+        }
+    }
+    async getMaxConsecutiveErrors(): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getMaxConsecutiveErrors();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getMaxConsecutiveErrors();
+            return result;
+        }
+    }
+    async getMaxLogEntries(): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getMaxLogEntries();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getMaxLogEntries();
+            return result;
+        }
+    }
+    async getRequestStats(): Promise<[bigint, bigint, bigint]> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getRequestStats();
+                return [
+                    result[0],
+                    result[1],
+                    result[2]
+                ];
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getRequestStats();
+            return [
+                result[0],
+                result[1],
+                result[2]
+            ];
         }
     }
     async ping(): Promise<void> {
@@ -202,6 +360,9 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+}
+function from_candid_opt_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
+    return value.length === 0 ? null : value[0];
 }
 export interface CreateActorOptions {
     agent?: Agent;

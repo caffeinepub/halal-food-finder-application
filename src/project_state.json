@@ -1,0 +1,308 @@
+{
+  "schemaVersion": "1.0.0",
+  "projectStateVersion": 3,
+  "summary": "Halal Food Finder is a React + Tailwind single-page application that helps users discover halal places nearby (browser GPS with IP-based fallback) or by searching a city/country name. Place data is fetched from Foursquare Places, city names are geocoded via OpenStreetMap Nominatim, and results can be explored in both a list view and an interactive Leaflet map. The project includes an Internet Computer (Motoko) backend canister that performs HTTP outcalls to external APIs, with basic caching, retry attempts, and operational telemetry endpoints (request stats, cache contents, error log). The app scope also includes both halal restaurants and halal shops, with a UI toggle/filter between them.",
+  "existing_features": [
+    {
+      "id": "IF-1",
+      "title": "Search halal restaurants by GPS coordinates",
+      "synonyms": [
+        "location-based search",
+        "nearby search"
+      ],
+      "description": "Allows searching for halal restaurants using latitude/longitude coordinates. Validates coordinate ranges and queries the Foursquare Places Search endpoint for halal restaurants within a radius, then normalizes results into the app's Restaurant model.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-2",
+      "title": "Search halal restaurants by city/country name",
+      "synonyms": [
+        "city search",
+        "text-based location search"
+      ],
+      "description": "Allows searching by a city or country string. Uses OpenStreetMap Nominatim geocoding to resolve the name to coordinates, then queries Foursquare Places Search for halal restaurants near that resolved location.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-3",
+      "title": "Restaurant data normalization layer",
+      "synonyms": [
+        "venue parsing",
+        "Foursquare-to-Restaurant mapping"
+      ],
+      "description": "Converts Foursquare venue results into a consistent Restaurant shape (id, name, cuisine, address, lat/lon, optional distance/rating/phone/website) used throughout the UI.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-4",
+      "title": "Frontend retry UX and safe mode state",
+      "synonyms": [
+        "automatic retry messaging",
+        "recovery mode"
+      ],
+      "description": "Implements client-side retry attempts with delay and user-friendly error classification, showing retry progress and optionally entering a 'safe mode' flow to encourage city searches during service recovery.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-5",
+      "title": "IP-based geolocation via backend",
+      "synonyms": [
+        "IP fallback location",
+        "approximate location detection"
+      ],
+      "description": "Retrieves approximate user location by calling the backend canister method that fetches ip-api.com geolocation JSON; validates coordinates and returns lat/lon plus optional city/country.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-6",
+      "title": "GPS geolocation with timeout and IP fallback",
+      "synonyms": [
+        "browser geolocation flow",
+        "hybrid location detection"
+      ],
+      "description": "SearchSection requests browser geolocation with high accuracy and timeout handling. On permission denial, timeout, or invalid GPS coordinates, it automatically falls back to IP-based geolocation and informs the user of the location source.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-7",
+      "title": "Stage-based geolocation status messaging",
+      "synonyms": [
+        "geolocation progress UI",
+        "source transparency"
+      ],
+      "description": "Displays structured status alerts for each geolocation stage (requesting permission, detecting GPS, IP fallback, validating, success, failure) and labels results as GPS vs IP-based.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-8",
+      "title": "Restaurant results container with view switching",
+      "synonyms": [
+        "results tabs",
+        "list/map toggle"
+      ],
+      "description": "Provides a results section with tabs for List View and Map View, selection sharing between views, and dedicated states for loading, errors, safe mode, and empty state.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-9",
+      "title": "Restaurant list view with rich cards",
+      "synonyms": [
+        "list results",
+        "grid cards"
+      ],
+      "description": "Renders restaurant results in a scrollable grid of cards including cuisine badge, rating display, optional distance formatting, address, click-to-call phone links, website links, and a 'Get Directions' action.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-10",
+      "title": "Interactive restaurant map view (Leaflet)",
+      "synonyms": [
+        "map results",
+        "marker map"
+      ],
+      "description": "Loads Leaflet dynamically and displays restaurant markers with a custom halal marker icon and popups. Fits bounds to all markers and allows selecting a restaurant by clicking markers.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-11",
+      "title": "Map resilience and graceful degradation",
+      "synonyms": [
+        "map error handling",
+        "map retry"
+      ],
+      "description": "Handles Leaflet load/init failures with a dedicated error UI, retry button, and guidance to use list view while the map is unavailable.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-12",
+      "title": "Directions deep-linking to Google Maps",
+      "synonyms": [
+        "open in maps",
+        "navigation link"
+      ],
+      "description": "Provides a 'Get Directions' action in both list and map detail card that opens Google Maps with the restaurant's coordinates.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-13",
+      "title": "Backend HTTP outcall proxy (GET/POST)",
+      "synonyms": [
+        "external API proxy",
+        "IC http_request wrapper"
+      ],
+      "description": "Motoko canister wraps IC management canister http_request for GET and POST, adding a User-Agent header and using a transform function. Supports making external API requests from the canister.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-14",
+      "title": "Backend response caching with TTL",
+      "synonyms": [
+        "API cache",
+        "outcall caching"
+      ],
+      "description": "Caches proxied responses in-memory in the canister using a Map keyed by method and URL (and body for POST) with a 5-minute validity window; includes a clearCache(prefix) endpoint.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-15",
+      "title": "Backend retry attempts and error logging",
+      "synonyms": [
+        "outcall retries",
+        "error log"
+      ],
+      "description": "Retries failed outcalls up to a limit, tracks consecutive errors, and maintains an error log with timestamps and messages (pruned by age and bounded by max entries).",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-16",
+      "title": "Backend operational telemetry endpoints",
+      "synonyms": [
+        "stats endpoints",
+        "cache inspection"
+      ],
+      "description": "Exposes query methods to retrieve request statistics, cache counts/contents, cache expiration settings, cache time remaining for a key, and error log entries/counts.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-17",
+      "title": "Internet Identity authentication provider",
+      "synonyms": [
+        "II login",
+        "auth context"
+      ],
+      "description": "Implements a React context provider that initializes AuthClient, loads stored identity on mount, supports login/logout, and exposes status flags for UI integration.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-18",
+      "title": "Authenticated/anonymous actor creation for backend calls",
+      "synonyms": [
+        "actor factory",
+        "identity-bound agent"
+      ],
+      "description": "Creates an Internet Computer actor configured with the current identity when logged in (or anonymous otherwise) and uses react-query to cache it and refresh dependent queries on identity change.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-19",
+      "title": "UI theming and halal-branded design system",
+      "synonyms": [
+        "dark mode",
+        "tailwind tokens"
+      ],
+      "description": "Uses next-themes for system/light/dark theme switching and Tailwind + CSS variables (OKLCH) including a custom 'halal' green palette. Includes reusable UI primitives and consistent styling across components.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "IF-20",
+      "title": "Loading and empty-state experiences",
+      "synonyms": [
+        "skeleton loading",
+        "no results UI"
+      ],
+      "description": "Shows a skeleton-based loading state during searches and a dedicated empty state prompt before any results are available.",
+      "reqIds": [],
+      "version": 1
+    },
+    {
+      "id": "feature-update-the-location-detection-ux-so-it-is-reliable-and-understandable-do-not-auto-request-gps-on-initial-page-mount-instead-show-a-clear-prompt-and-require-an-explicit-user-click-on-use-my-current-location-before-calling-the-browser-geolocation-api",
+      "title": "Update the location detection UX so it is reliable and understandable: do not auto-request GPS on initial page mount; instead, show a clear prompt and require an explicit user click on “Use My Current Location” before calling the browser geolocation API.",
+      "reqIds": [
+        "REQ-1"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-make-gps-detection-more-resilient-by-adding-a-two-pass-gps-strategy-first-attempt-with-high-accuracy-then-if-it-times-out-unavailable-retry-once-with-lower-accuracy-settings-before-falling-back-to-ip-based-geolocation-ensure-timeouts-are-not-duplicated-and-that-only-one-fallback-path-executes",
+      "title": "Make GPS detection more resilient by adding a two-pass GPS strategy: first attempt with high accuracy, then if it times out/unavailable, retry once with lower accuracy settings before falling back to IP-based geolocation. Ensure timeouts are not duplicated and that only one fallback path executes.",
+      "reqIds": [
+        "REQ-2"
+      ],
+      "version": 1
+    },
+    {
+      "id": "feature-improve-user-facing-guidance-when-location-fails-detect-common-causes-non-secure-context-permission-denied-geolocation-not-supported-and-present-actionable-instructions-in-the-ui-in-english-including-how-to-enable-location-permission-for-the-site-and-the-option-to-use-city-search-instead",
+      "title": "Improve user-facing guidance when location fails: detect common causes (non-secure context, permission denied, geolocation not supported) and present actionable instructions in the UI (in English), including how to enable location permission for the site and the option to use city search instead.",
+      "reqIds": [
+        "REQ-3"
+      ],
+      "version": 1
+    }
+  ],
+  "new_feature_requests": [
+    {
+      "id": "AR-1",
+      "summary": "Include both halal shops and restaurants (not just restaurants), with a UI toggle/tabs/filter to switch categories across list and map results",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-2",
+      "summary": "Support alternative/backup geolocation providers (beyond browser GPS + current IP fallback) to improve reliability when location fails across browsers/devices",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-3",
+      "summary": "Improve backend/frontend recovery so the app can exit Safe Mode automatically and avoid/handle 'canister stopped' rejections without breaking location-based search",
+      "reqIds": [],
+      "status": "pending"
+    },
+    {
+      "id": "AR-7",
+      "summary": "Harden IP-based fallback reliability by switching the backend IP geolocation outcall to a HTTPS-based endpoint/provider and keep the response parsing compatible with the frontend’s expected fields (lat, lon, city, country, status/message equivalents).",
+      "reqIds": [
+        "REQ-4"
+      ],
+      "status": "pending"
+    }
+  ],
+  "architectural_notes": [
+    "Frontend is a React SPA (Vite-style entry) composed of feature components (SearchSection, RestaurantResults, RestaurantList, RestaurantMap) plus hooks for data access (useRestaurantSearch, useIPGeolocation).",
+    "Uses @tanstack/react-query to manage creation/caching of the Internet Computer actor; actor is recreated on identity changes and triggers invalidation/refetch of other queries.",
+    "Authentication is integrated via Internet Identity using @dfinity/auth-client, exposed through a React context provider (InternetIdentityProvider). The app can operate with an anonymous actor when unauthenticated.",
+    "Backend is a Motoko actor canister that proxies external HTTP GET/POST via IC management canister http_request, using a transform function to strip response headers.",
+    "Backend includes in-canister caching keyed by method+URL(+body for POST) with a 5-minute TTL and a cache clearing endpoint based on key prefix.",
+    "Frontend uses toast notifications (sonner) heavily for user feedback and recovery messaging; UI components appear to be shadcn/ui-style primitives styled with Tailwind CSS variables (OKLCH tokens) and next-themes for dark mode.",
+    "Leaflet map assets are loaded dynamically by injecting script/link tags at runtime, with graceful degradation to list view on map load failures.",
+    "Restaurant results are normalized into a local Restaurant model and shared across list/map views with selection synchronization (selectedRestaurant state)."
+  ],
+  "known_issues": [
+    "FOURSQUARE_API_KEY is a placeholder and is embedded in the frontend source; this is insecure and will not work until replaced. API keys should typically be kept server-side.",
+    "Foursquare authorization is appended as a query parameter (\"&Authorization=\") instead of using the required HTTP Authorization header; requests may fail depending on Foursquare enforcement.",
+    "Backend proxyExternalApiGet/proxyExternalApiPost return error strings (e.g., \"Error: ...\") rather than throwing; frontend retry logic (executeWithRetry) may not trigger on these failures and JSON.parse may fail instead.",
+    "Backend getCacheContents returns (key, data, currentTime) rather than the entry timestamp, which makes cache inspection inaccurate.",
+    "IP geolocation uses http://ip-api.com (not HTTPS). While the call is made from the backend canister, upstream services or policies may require HTTPS and this may reduce reliability.",
+    "Leaflet loader appends script/link tags on each retry without cleanup; repeated retries can duplicate tags and potentially cause side effects.",
+    "Error log eviction logic attempts to remove the oldest entry when maxLogEntries is exceeded but does not properly update the tracked oldest item during iteration, risking incorrect eviction behavior.",
+    "There are two different index.css files shown (frontend/index.css and frontend/src/index.css) with overlapping variable definitions; this may cause confusion or inconsistent styling depending on which is actually bundled.",
+    "Backend proxy endpoints accept arbitrary URLs from the frontend without allowlisting; this can be abused for SSRF-like behavior and canister cycle drain if exposed publicly.",
+    "SearchSection auto-requests geolocation on mount; this may be undesirable UX in some browsers/regions and conflicts with the comment in the provided summary that geolocation is not automatic.",
+    "Users report location-based search failing across browsers/devices even with location permissions allowed (GPS + IP fallback not working reliably).",
+    "Backend calls can fail with replica rejection 'Reject code: 5' / 'IC0508: Canister ... is stopped', which breaks location-based flows and can trigger/lock Safe Mode."
+  ],
+  "isFixRequest": true,
+  "gameProjectType": "none",
+  "projectName": "Halal Food Finder",
+  "clarification_mode": "instant",
+  "clarification_rounds": 0
+}

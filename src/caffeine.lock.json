@@ -5,13 +5,14 @@
   },
   "components": {
     "http-outcalls": "3.0.0",
-    "core-infrastructure": "1.0.0",
+    "core-infrastructure": "1.0.2",
     "shadcn-ui": "1.0.0",
     "build-template-react": "1.0.0",
-    "initial-app": "1.0.0"
+    "initial-app": "1.0.0",
+    "github-export-icp-cli": "1.0.0"
   },
   "tags": [],
-  "aiCoreVersion": "0.18.1",
+  "aiCoreVersion": "0.19.1",
   "motokoVersion": "1.0.0-beta",
   "coreLibVersion": "implicits-20"
 }

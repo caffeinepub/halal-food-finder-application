@@ -9,7 +9,7 @@ export function EmptyState() {
         />
         <h3 className="mb-2 text-xl font-semibold">Start Your Search</h3>
         <p className="text-muted-foreground">
-          Use your current location or search by city name to discover halal restaurants near you.
+          Click "Use My Current Location" to find nearby halal restaurants, or search by city name if location access is unavailable or blocked.
         </p>
       </div>
     </section>

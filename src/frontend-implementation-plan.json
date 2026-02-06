@@ -1,0 +1,60 @@
+{
+  "kind": "implementation_plan",
+  "version": "1.0",
+  "title": "Harden location detection UX (explicit GPS prompt + resilient fallback + actionable guidance)",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "summary": "Stop auto-requesting GPS on initial mount; require an explicit click on “Use My Current Location” while preserving the existing multi-stage status messaging.",
+      "acceptanceCriteria": [
+        "On first load, the app does not trigger the browser GPS permission prompt automatically.",
+        "Clicking “Use My Current Location” triggers the GPS permission prompt and starts the location detection flow.",
+        "The existing multi-stage status messaging remains visible and accurate throughout the flow."
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/SearchSection.tsx",
+          "operation": "modify",
+          "description": "Remove the mount-time auto geolocation request (and any related toasts) so GPS permission is never requested automatically. Keep the multi-stage UI messaging, but only transition into permission/detection stages from an explicit user action (clicking the existing “Use My Current Location” button). Use existing shadcn-ui Button/Alert/Card patterns already in this file; verify the component's usage instructions before implementing."
+        }
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "summary": "Implement a two-pass GPS strategy (high accuracy then low accuracy) with a single, non-duplicated timeout and a single IP fallback execution path.",
+      "acceptanceCriteria": [
+        "If high-accuracy GPS fails due to timeout or POSITION_UNAVAILABLE, the app performs one retry using less strict geolocation options (e.g., enableHighAccuracy: false, adjusted timeout/maximumAge).",
+        "If the retry fails, the app falls back to IP-based geolocation exactly once (no double-toasts, no repeated state transitions).",
+        "The “Detecting Location…” button state correctly reflects the active attempt (no stuck spinner)."
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/SearchSection.tsx",
+          "operation": "modify",
+          "description": "Refactor geolocation flow into a single orchestrated attempt pipeline: (1) high-accuracy getCurrentPosition, (2) one retry with lower-accuracy options when the first attempt fails with TIMEOUT or POSITION_UNAVAILABLE, then (3) IP fallback if retry fails. Add internal guards (e.g., a ref-based inFlight/fallbackExecuted flag) so timeouts and callbacks cannot trigger multiple state transitions or duplicate toasts. Update stage modeling so UI/button loading text reflects which attempt is active and always clears loading/spinner on completion. Use existing shadcn-ui Button/Alert components already used in this file; verify the component's usage instructions before implementing."
+        }
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "summary": "Provide actionable, English guidance for common location failures (non-secure context, permission denied, unsupported geolocation) and offer retry/city search alternatives.",
+      "acceptanceCriteria": [
+        "If the page is not in a secure context and GPS cannot be used, the UI explains that location requires HTTPS and suggests using city search.",
+        "If permission is denied, the UI explains how to re-enable location permissions in the browser/site settings and offers a retry button.",
+        "If geolocation is not supported, the UI clearly states this and automatically offers IP-based fallback or city search."
+      ],
+      "file_operations": [
+        {
+          "path": "frontend/src/components/SearchSection.tsx",
+          "operation": "modify",
+          "description": "Add user-facing guidance states/content based on detected failure causes: check window.isSecureContext before attempting GPS and present an Alert explaining HTTPS requirement + recommend city search; detect permission denied and show steps to re-enable site location permission (browser/site settings) plus a visible retry action; detect geolocation unsupported and show a clear message while offering IP fallback and/or city search. Ensure guidance integrates with (not replaces) the existing multi-stage messaging and does not introduce repeated fallback attempts. Use existing shadcn-ui Alert/Button components already used in this file; verify the component's usage instructions before implementing."
+        },
+        {
+          "path": "frontend/src/components/EmptyState.tsx",
+          "operation": "modify",
+          "description": "Update the empty-state copy (English) to explicitly mention city search as an alternative when location access is blocked/disabled, aligning with the new guidance messaging (no new routes/pages)."
+        }
+      ]
+    }
+  ]
+}

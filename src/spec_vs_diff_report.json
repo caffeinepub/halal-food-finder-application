@@ -1,0 +1,63 @@
+{
+  "kind": "spec_vs_diff_report",
+  "version": "1.0",
+  "generatedAt": "2026-02-04T08:38:04.781Z",
+  "summary": "Frontend geolocation UX appears to be reworked (explicit click, staged states, two-pass GPS + guarded IP fallback, and updated empty-state copy). Backend changes shown add broad caching/retry/proxy/logging infrastructure, but the diff summary does not provide clear evidence that the IP geolocation outcall was switched to an HTTPS provider as required. Several additional frontend/backend changes are present that were not requested (and one violates the stated “immutable paths” constraint).",
+  "missing_requirements": [
+    {
+      "id": "REQ-4",
+      "requirement": "Harden IP-based fallback reliability by switching the backend IP geolocation outcall to a HTTPS-based endpoint/provider and keep response parsing compatible with expected fields (lat, lon, city, country, status/message equivalents).",
+      "reason": "The diff summary does not show any concrete change of the backend IP geolocation outcall to an HTTPS endpoint/provider; the only explicit provider mentioned remains ip-api.com, and no https:// endpoint is evidenced in the shown backend changes.",
+      "evidence": [
+        "backend/main.mo (truncated; no HTTPS IP geo endpoint shown)",
+        "frontend-file-summaries.txt (mentions parsing ip-api.com JSON)"
+      ]
+    }
+  ],
+  "hallucinated_features": [
+    {
+      "description": "Backend HTTP proxy API with caching and retry logic (proxyExternalApiGet), cache clearing endpoint, and error log/telemetry-like structures (RequestStats, ErrorEntry, log management).",
+      "reason": "Not requested by any REQ; requirements only asked to switch IP geolocation outcall to HTTPS and keep parsing compatible.",
+      "evidence": [
+        "backend/main.mo"
+      ]
+    },
+    {
+      "description": "Modifications to Internet Identity hook file under an explicitly immutable frontend path (frontend/src/hooks/useInternetIdentity.ts).",
+      "reason": "BuildRequest constraints explicitly disallow editing this file path, and no requirement requested auth changes.",
+      "evidence": [
+        "frontend/src/hooks/useInternetIdentity.ts"
+      ]
+    },
+    {
+      "description": "UI/theme changes unrelated to location hardening (custom halal green OKLCH tokens; Tailwind config changes).",
+      "reason": "Not requested by any REQ (location UX + backend IP geo only).",
+      "evidence": [
+        "frontend-file-summaries.txt (frontend/src/index.css, frontend/tailwind.config.js)"
+      ]
+    },
+    {
+      "description": "Additional resilience/retry/safe-mode UX in RestaurantResults and RestaurantMap beyond the location detection requirements.",
+      "reason": "Not requested by REQ-1/2/3/4 (these focus on geolocation detection UX and backend IP fallback endpoint).",
+      "evidence": [
+        "frontend-file-summaries.txt (frontend/src/components/RestaurantResults.tsx, frontend/src/components/RestaurantMap.tsx)"
+      ]
+    },
+    {
+      "description": "Added repository metadata file project_state.json describing broad app features/telemetry endpoints.",
+      "reason": "Not requested by any REQ.",
+      "evidence": [
+        "project_state.json"
+      ]
+    }
+  ],
+  "confidence": 0.62,
+  "changed_files": [
+    "backend/main.mo",
+    "frontend-file-summaries.txt",
+    "frontend/src/components/EmptyState.tsx",
+    "frontend/src/components/SearchSection.tsx",
+    "frontend/src/hooks/useInternetIdentity.ts",
+    "project_state.json"
+  ]
+}

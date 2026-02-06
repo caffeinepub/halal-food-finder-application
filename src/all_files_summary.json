@@ -1,0 +1,23 @@
+{
+  "backend/main.mo": "Motoko canister implementing an HTTP GET proxy with caching, retry logic, error logging, and request statistics, including cache invalidation by key prefix and safeguards against repeated external API failures.",
+  "feature_evidence.json": "Structured report documenting implemented frontend features around improved geolocation UX, resilient GPS detection with fallbacks, and enhanced user guidance, including affected files, components, and test requirements.",
+  "frontend-file-summaries.txt": "Prewritten high-level summaries of all major frontend files, describing application structure, geolocation behavior, error handling, UI components, and styling configuration.",
+  "frontend/index.css": "Global Tailwind CSS base styles defining design tokens with an OKLCH color system, light/dark theme variables, and shared layout and border styling.",
+  "frontend/index.html": "HTML entry point that sets up the root container, metadata, and loads the React application via the main TypeScript module.",
+  "frontend/src/App.tsx": "Root React component wiring together theming, header, search section, results display, footer, and toast notifications using the restaurant search hook.",
+  "frontend/src/components/EmptyState.tsx": "Presentational component shown before any search, guiding users to use location-based search or fall back to city search when location access is unavailable.",
+  "frontend/src/components/Footer.tsx": "Footer component displaying copyright information, branding attribution, and a short description of the app’s purpose and data sources.",
+  "frontend/src/components/Header.tsx": "Sticky application header showing the Halal Food Finder logo, title, tagline, and a brief location-based prompt.",
+  "frontend/src/components/LoadingState.tsx": "Loading UI with spinner and skeleton cards displayed while restaurant search requests are in progress.",
+  "frontend/src/components/RestaurantList.tsx": "Scrollable grid component rendering restaurant cards with distance, cuisine, ratings, contact details, and actions such as selecting a restaurant or opening directions in Google Maps.",
+  "frontend/src/components/RestaurantMap.tsx": "Renders an interactive Leaflet map that dynamically loads map assets, displays restaurant markers, and handles selection, popups, loading states, and map-related errors.",
+  "frontend/src/components/RestaurantResults.tsx": "Coordinates the main results UI, switching between loading, error, safe mode, list, and map views, and manages the currently selected restaurant.",
+  "frontend/src/components/SearchSection.tsx": "Implements location and city-based search with detailed geolocation state handling, including GPS detection, IP fallback, validation, user feedback, and retry logic.",
+  "frontend/src/hooks/useActor.ts": "Provides a React Query hook that creates and caches a backend actor based on the current Internet Identity, recreating and invalidating dependent queries when identity changes.",
+  "frontend/src/hooks/useInternetIdentity.ts": "Defines context, provider, and hooks for managing Internet Identity authentication, including login, logout, identity persistence, and detailed login status tracking.",
+  "frontend/src/hooks/useQueries.ts": "Contains the restaurant search logic and types, integrating a backend actor and Foursquare data with retry, safe mode, error classification, and user-friendly messaging.",
+  "frontend/src/index.css": "Initializes Tailwind base/components/utilities and defines extensive CSS variables for light/dark themes, including layout radius, UI colors, charts, sidebar, and custom halal color palette, plus minor Leaflet styling fixes.",
+  "frontend/src/main.tsx": "Frontend entry point that creates the React root, sets up TanStack QueryClient, wraps the app with Internet Identity authentication context, and renders the main App component.",
+  "frontend/tailwind.config.js": "Tailwind CSS configuration enabling class-based dark mode, scanning frontend sources, and extending the theme with CSS-variable-driven colors, halal palette, layout sizing, animations, and plugins for typography, container queries, and animations.",
+  "project_state.json": "Structured project metadata describing the Halal Food Finder app, its React + Tailwind frontend and Motoko backend, and a catalog of implemented features such as geolocation, halal place search, data normalization, retries, and fallback flows."
+}

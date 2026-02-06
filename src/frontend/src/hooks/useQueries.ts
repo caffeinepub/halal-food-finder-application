@@ -366,3 +366,79 @@ export function useRestaurantSearch() {
     exitSafeMode,
   };
 }
+
+export interface IPGeolocationResult {
+  lat: number;
+  lon: number;
+  city?: string;
+  country?: string;
+}
+
+export function useIPGeolocation() {
+  const { actor } = useActor();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const getIPLocation = useCallback(async (): Promise<IPGeolocationResult | null> => {
+    if (!actor) {
+      console.error('Actor not available for IP geolocation');
+      setError('Service not available');
+      return null;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      console.log('Requesting IP-based geolocation from ip-api.com...');
+      const response = await actor.getIpApiGeolocation();
+      
+      let data;
+      try {
+        data = JSON.parse(response);
+        console.log('IP geolocation response:', data);
+      } catch (parseError) {
+        console.error('Failed to parse IP geolocation response:', parseError);
+        setError('Invalid response from location service');
+        return null;
+      }
+
+      if (data && data.status === 'success' && typeof data.lat === 'number' && typeof data.lon === 'number') {
+        const lat = data.lat;
+        const lon = data.lon;
+        
+        if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
+          console.log('Valid IP geolocation coordinates:', { lat, lon, city: data.city, country: data.country });
+          return {
+            lat,
+            lon,
+            city: data.city || undefined,
+            country: data.country || undefined,
+          };
+        } else {
+          console.error('Invalid coordinates from IP geolocation:', { lat, lon });
+        }
+      } else if (data && data.status === 'fail') {
+        console.error('IP geolocation API returned failure:', data.message);
+        setError(data.message || 'Unable to determine location from IP address');
+      } else {
+        console.error('Missing or invalid fields in IP geolocation response:', data);
+      }
+
+      setError('Unable to determine location from IP address');
+      return null;
+    } catch (err) {
+      console.error('IP geolocation error:', err);
+      setError('Failed to get IP-based location');
+      return null;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [actor]);
+
+  return {
+    getIPLocation,
+    isLoading,
+    error,
+  };
+}

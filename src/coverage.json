@@ -1,0 +1,83 @@
+{
+  "kind": "coverage_report",
+  "version": "1.0",
+  "generatedAt": "2026-02-04T08:38:04.818Z",
+  "sources": {
+    "buildRequest": true,
+    "implementationPlan": true
+  },
+  "requirements": {
+    "total": 4,
+    "implemented": 3,
+    "items": [
+      {
+        "id": "REQ-1",
+        "summary": "Update the location detection UX so it is reliable and understandable: do not auto-request GPS on initial page mount; instead, show a clear prompt and require an explicit user click on “Use My Current Location” before calling the browser geolocation API.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/components/SearchSection.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/components/SearchSection.tsx"
+        ]
+      },
+      {
+        "id": "REQ-2",
+        "summary": "Make GPS detection more resilient by adding a two-pass GPS strategy: first attempt with high accuracy, then if it times out/unavailable, retry once with lower accuracy settings before falling back to IP-based geolocation. Ensure timeouts are not duplicated and that only one fallback path executes.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/components/SearchSection.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/components/SearchSection.tsx"
+        ]
+      },
+      {
+        "id": "REQ-3",
+        "summary": "Improve user-facing guidance when location fails: detect common causes (non-secure context, permission denied, geolocation not supported) and present actionable instructions in the UI (in English), including how to enable location permission for the site and the option to use city search instead.",
+        "status": "implemented",
+        "plannedFiles": [
+          "frontend/src/components/SearchSection.tsx",
+          "frontend/src/components/EmptyState.tsx"
+        ],
+        "matchedFiles": [
+          "frontend/src/components/SearchSection.tsx",
+          "frontend/src/components/EmptyState.tsx"
+        ]
+      },
+      {
+        "id": "REQ-4",
+        "summary": "Harden IP-based fallback reliability by switching the backend IP geolocation outcall to a HTTPS-based endpoint/provider and keep the response parsing compatible with the frontend’s expected fields (lat, lon, city, country, status/message equivalents).",
+        "status": "unknown",
+        "plannedFiles": [],
+        "matchedFiles": []
+      }
+    ]
+  },
+  "changedFiles": [
+    "backend/main.mo",
+    "build-request.json",
+    "build-template/Dockerfile",
+    "build-template/LICENSE",
+    "build-template/README.md",
+    "build-template/deploy.sh",
+    "build-template/icp.yaml",
+    "build-template/src/backend/canister.yaml",
+    "build-template/src/frontend/canister.yaml",
+    "caffeine.lock.json",
+    "feature_evidence.json",
+    "frontend-file-summaries.txt",
+    "frontend-implementation-plan.json",
+    "frontend/src/backend.d.ts",
+    "frontend/src/backend.ts",
+    "frontend/src/components/EmptyState.tsx",
+    "frontend/src/components/SearchSection.tsx",
+    "frontend/src/declarations/backend.did.d.ts",
+    "frontend/src/declarations/backend.did.js",
+    "frontend/src/hooks/useInternetIdentity.ts",
+    "project_state.json",
+    "scratch/component-selection.json",
+    "spec.md",
+    "spec_vs_diff_report.json"
+  ]
+}

@@ -30,8 +30,22 @@ export const TransformationOutput = IDL.Record({
 
 export const idlService = IDL.Service({
   'clearCache' : IDL.Func([IDL.Text], [], []),
+  'getCacheContents' : IDL.Func(
+      [],
+      [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text, Time))],
+      ['query'],
+    ),
+  'getCacheCount' : IDL.Func([], [IDL.Nat], ['query']),
+  'getCacheExpiration' : IDL.Func([], [IDL.Nat], ['query']),
+  'getCacheTimeRemaining' : IDL.Func([IDL.Text], [Time], ['query']),
+  'getCachedData' : IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
   'getErrorLog' : IDL.Func([], [IDL.Vec(IDL.Tuple(Time, IDL.Text))], ['query']),
-  'ping' : IDL.Func([], [], ['query']),
+  'getErrorLogCount' : IDL.Func([], [IDL.Nat], ['query']),
+  'getIpApiGeolocation' : IDL.Func([], [IDL.Text], []),
+  'getMaxConsecutiveErrors' : IDL.Func([], [IDL.Nat], ['query']),
+  'getMaxLogEntries' : IDL.Func([], [IDL.Nat], ['query']),
+  'getRequestStats' : IDL.Func([], [IDL.Nat, IDL.Nat, IDL.Nat], ['query']),
+  'ping' : IDL.Func([], [], []),
   'proxyExternalApiGet' : IDL.Func([IDL.Text], [IDL.Text], []),
   'proxyExternalApiPost' : IDL.Func([IDL.Text, IDL.Text], [IDL.Text], []),
   'transform' : IDL.Func(
@@ -63,12 +77,26 @@ export const idlFactory = ({ IDL }) => {
   
   return IDL.Service({
     'clearCache' : IDL.Func([IDL.Text], [], []),
+    'getCacheContents' : IDL.Func(
+        [],
+        [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text, Time))],
+        ['query'],
+      ),
+    'getCacheCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getCacheExpiration' : IDL.Func([], [IDL.Nat], ['query']),
+    'getCacheTimeRemaining' : IDL.Func([IDL.Text], [Time], ['query']),
+    'getCachedData' : IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
     'getErrorLog' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(Time, IDL.Text))],
         ['query'],
       ),
-    'ping' : IDL.Func([], [], ['query']),
+    'getErrorLogCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getIpApiGeolocation' : IDL.Func([], [IDL.Text], []),
+    'getMaxConsecutiveErrors' : IDL.Func([], [IDL.Nat], ['query']),
+    'getMaxLogEntries' : IDL.Func([], [IDL.Nat], ['query']),
+    'getRequestStats' : IDL.Func([], [IDL.Nat, IDL.Nat, IDL.Nat], ['query']),
+    'ping' : IDL.Func([], [], []),
     'proxyExternalApiGet' : IDL.Func([IDL.Text], [IDL.Text], []),
     'proxyExternalApiPost' : IDL.Func([IDL.Text, IDL.Text], [IDL.Text], []),
     'transform' : IDL.Func(

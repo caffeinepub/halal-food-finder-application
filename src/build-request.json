@@ -1,0 +1,93 @@
+{
+  "kind": "build_request",
+  "title": "Fix and harden location detection settings (GPS + IP fallback)",
+  "priority": "normal",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "Update the location detection UX so it is reliable and understandable: do not auto-request GPS on initial page mount; instead, show a clear prompt and require an explicit user click on “Use My Current Location” before calling the browser geolocation API.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-1"
+        ],
+        "quotes": [
+          "fix location settings ?"
+        ]
+      },
+      "acceptanceCriteria": [
+        "On first load, the app does not trigger the browser GPS permission prompt automatically.",
+        "Clicking “Use My Current Location” triggers the GPS permission prompt and starts the location detection flow.",
+        "The existing multi-stage status messaging remains visible and accurate throughout the flow."
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "Make GPS detection more resilient by adding a two-pass GPS strategy: first attempt with high accuracy, then if it times out/unavailable, retry once with lower accuracy settings before falling back to IP-based geolocation. Ensure timeouts are not duplicated and that only one fallback path executes.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-1"
+        ],
+        "quotes": [
+          "fix location settings ?"
+        ]
+      },
+      "acceptanceCriteria": [
+        "If high-accuracy GPS fails due to timeout or POSITION_UNAVAILABLE, the app performs one retry using less strict geolocation options (e.g., enableHighAccuracy: false, adjusted timeout/maximumAge).",
+        "If the retry fails, the app falls back to IP-based geolocation exactly once (no double-toasts, no repeated state transitions).",
+        "The “Detecting Location…” button state correctly reflects the active attempt (no stuck spinner)."
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "text": "Improve user-facing guidance when location fails: detect common causes (non-secure context, permission denied, geolocation not supported) and present actionable instructions in the UI (in English), including how to enable location permission for the site and the option to use city search instead.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-1"
+        ],
+        "quotes": [
+          "fix location settings ?"
+        ]
+      },
+      "acceptanceCriteria": [
+        "If the page is not in a secure context and GPS cannot be used, the UI explains that location requires HTTPS and suggests using city search.",
+        "If permission is denied, the UI explains how to re-enable location permissions in the browser/site settings and offers a retry button.",
+        "If geolocation is not supported, the UI clearly states this and automatically offers IP-based fallback or city search."
+      ]
+    },
+    {
+      "id": "REQ-4",
+      "text": "Harden IP-based fallback reliability by switching the backend IP geolocation outcall to a HTTPS-based endpoint/provider and keep the response parsing compatible with the frontend’s expected fields (lat, lon, city, country, status/message equivalents).",
+      "target": "backend",
+      "source": {
+        "messageIds": [
+          "msg-1"
+        ],
+        "quotes": [
+          "fix location settings ?"
+        ]
+      },
+      "acceptanceCriteria": [
+        "Backend IP geolocation outcall uses HTTPS (no plain http://) to reduce failures due to network/security policies.",
+        "Frontend IP fallback succeeds when GPS is blocked/unavailable (assuming the chosen provider is reachable) and returns valid coordinates.",
+        "If the IP provider returns an error payload, the frontend shows a clear failure message and does not crash on JSON parsing."
+      ]
+    }
+  ],
+  "constraints": [
+    "Backend must remain a single Motoko actor in backend/main.mo; only add migration logic if state schema must change.",
+    "Do not edit files under frontend immutable paths (frontend/src/hooks/useInternetIdentity.ts, frontend/src/hooks/useInternetIdentity.tsx, frontend/src/hooks/useActor.ts, frontend/src/main.tsx, frontend/src/components/ui).",
+    "Use English for all user-facing text."
+  ],
+  "nonGoals": [
+    "Do not add new authentication methods beyond Internet Identity.",
+    "Do not add real-time features (WebSockets/push).",
+    "Do not introduce external databases or third-party backend services."
+  ],
+  "imageRequirements": {
+    "required": [],
+    "edits": []
+  }
+}
