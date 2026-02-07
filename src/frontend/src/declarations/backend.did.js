@@ -8,7 +8,14 @@
 
 import { IDL } from '@icp-sdk/core/candid';
 
+export const UserRole = IDL.Variant({
+  'admin' : IDL.Null,
+  'user' : IDL.Null,
+  'guest' : IDL.Null,
+});
+export const ConfirmationResponse = IDL.Record({ 'success' : IDL.Text });
 export const Time = IDL.Int;
+export const UserProfile = IDL.Record({ 'name' : IDL.Text });
 export const http_header = IDL.Record({
   'value' : IDL.Text,
   'name' : IDL.Text,
@@ -27,38 +34,64 @@ export const TransformationOutput = IDL.Record({
   'body' : IDL.Vec(IDL.Nat8),
   'headers' : IDL.Vec(http_header),
 });
+export const Location = IDL.Record({
+  'latitude' : IDL.Float64,
+  'longitude' : IDL.Float64,
+});
 
 export const idlService = IDL.Service({
-  'clearCache' : IDL.Func([IDL.Text], [], []),
+  '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+  'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'clearApiCache' : IDL.Func([], [ConfirmationResponse], []),
+  'clearCachePrefix' : IDL.Func([IDL.Text], [], []),
+  'clearFoursquareApiKey' : IDL.Func([], [ConfirmationResponse], []),
+  'foursquarePlacesSearch' : IDL.Func([IDL.Text], [IDL.Text], []),
   'getCacheContents' : IDL.Func(
       [],
       [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text, Time))],
       ['query'],
     ),
-  'getCacheCount' : IDL.Func([], [IDL.Nat], ['query']),
   'getCacheExpiration' : IDL.Func([], [IDL.Nat], ['query']),
   'getCacheTimeRemaining' : IDL.Func([IDL.Text], [Time], ['query']),
   'getCachedData' : IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
+  'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
+  'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
   'getErrorLog' : IDL.Func([], [IDL.Vec(IDL.Tuple(Time, IDL.Text))], ['query']),
-  'getErrorLogCount' : IDL.Func([], [IDL.Nat], ['query']),
+  'getFoursquareApiKey' : IDL.Func([], [IDL.Opt(IDL.Text)], ['query']),
   'getIpApiGeolocation' : IDL.Func([], [IDL.Text], []),
-  'getMaxConsecutiveErrors' : IDL.Func([], [IDL.Nat], ['query']),
-  'getMaxLogEntries' : IDL.Func([], [IDL.Nat], ['query']),
+  'getPageViews' : IDL.Func([], [IDL.Nat], ['query']),
   'getRequestStats' : IDL.Func([], [IDL.Nat, IDL.Nat, IDL.Nat], ['query']),
+  'getUserProfile' : IDL.Func(
+      [IDL.Principal],
+      [IDL.Opt(UserProfile)],
+      ['query'],
+    ),
+  'incrementPageViews' : IDL.Func([], [IDL.Nat], []),
+  'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
   'ping' : IDL.Func([], [], []),
   'proxyExternalApiGet' : IDL.Func([IDL.Text], [IDL.Text], []),
   'proxyExternalApiPost' : IDL.Func([IDL.Text, IDL.Text], [IDL.Text], []),
+  'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+  'setFoursquareApiKey' : IDL.Func([IDL.Text], [ConfirmationResponse], []),
   'transform' : IDL.Func(
       [TransformationInput],
       [TransformationOutput],
       ['query'],
     ),
+  'validateCoordinates' : IDL.Func([Location], [IDL.Bool], []),
 });
 
 export const idlInitArgs = [];
 
 export const idlFactory = ({ IDL }) => {
+  const UserRole = IDL.Variant({
+    'admin' : IDL.Null,
+    'user' : IDL.Null,
+    'guest' : IDL.Null,
+  });
+  const ConfirmationResponse = IDL.Record({ 'success' : IDL.Text });
   const Time = IDL.Int;
+  const UserProfile = IDL.Record({ 'name' : IDL.Text });
   const http_header = IDL.Record({ 'value' : IDL.Text, 'name' : IDL.Text });
   const http_request_result = IDL.Record({
     'status' : IDL.Nat,
@@ -74,36 +107,55 @@ export const idlFactory = ({ IDL }) => {
     'body' : IDL.Vec(IDL.Nat8),
     'headers' : IDL.Vec(http_header),
   });
+  const Location = IDL.Record({
+    'latitude' : IDL.Float64,
+    'longitude' : IDL.Float64,
+  });
   
   return IDL.Service({
-    'clearCache' : IDL.Func([IDL.Text], [], []),
+    '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
+    'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'clearApiCache' : IDL.Func([], [ConfirmationResponse], []),
+    'clearCachePrefix' : IDL.Func([IDL.Text], [], []),
+    'clearFoursquareApiKey' : IDL.Func([], [ConfirmationResponse], []),
+    'foursquarePlacesSearch' : IDL.Func([IDL.Text], [IDL.Text], []),
     'getCacheContents' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(IDL.Text, IDL.Text, Time))],
         ['query'],
       ),
-    'getCacheCount' : IDL.Func([], [IDL.Nat], ['query']),
     'getCacheExpiration' : IDL.Func([], [IDL.Nat], ['query']),
     'getCacheTimeRemaining' : IDL.Func([IDL.Text], [Time], ['query']),
     'getCachedData' : IDL.Func([IDL.Text], [IDL.Opt(IDL.Text)], ['query']),
+    'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
+    'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
     'getErrorLog' : IDL.Func(
         [],
         [IDL.Vec(IDL.Tuple(Time, IDL.Text))],
         ['query'],
       ),
-    'getErrorLogCount' : IDL.Func([], [IDL.Nat], ['query']),
+    'getFoursquareApiKey' : IDL.Func([], [IDL.Opt(IDL.Text)], ['query']),
     'getIpApiGeolocation' : IDL.Func([], [IDL.Text], []),
-    'getMaxConsecutiveErrors' : IDL.Func([], [IDL.Nat], ['query']),
-    'getMaxLogEntries' : IDL.Func([], [IDL.Nat], ['query']),
+    'getPageViews' : IDL.Func([], [IDL.Nat], ['query']),
     'getRequestStats' : IDL.Func([], [IDL.Nat, IDL.Nat, IDL.Nat], ['query']),
+    'getUserProfile' : IDL.Func(
+        [IDL.Principal],
+        [IDL.Opt(UserProfile)],
+        ['query'],
+      ),
+    'incrementPageViews' : IDL.Func([], [IDL.Nat], []),
+    'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
     'ping' : IDL.Func([], [], []),
     'proxyExternalApiGet' : IDL.Func([IDL.Text], [IDL.Text], []),
     'proxyExternalApiPost' : IDL.Func([IDL.Text, IDL.Text], [IDL.Text], []),
+    'saveCallerUserProfile' : IDL.Func([UserProfile], [], []),
+    'setFoursquareApiKey' : IDL.Func([IDL.Text], [ConfirmationResponse], []),
     'transform' : IDL.Func(
         [TransformationInput],
         [TransformationOutput],
         ['query'],
       ),
+    'validateCoordinates' : IDL.Func([Location], [IDL.Bool], []),
   });
 };
 

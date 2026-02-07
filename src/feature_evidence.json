@@ -2,10 +2,12 @@
   "kind": "feature_evidence_report",
   "features": [
     {
-      "featureId": "feature-update-the-location-detection-ux-so-it-is-reliable-and-understandable-do-not-auto-request-gps-on-initial-page-mount-instead-show-a-clear-prompt-and-require-an-explicit-user-click-on-use-my-current-location-before-calling-the-browser-geolocation-api",
-      "featureTitle": "Update the location detection UX so it is reliable and understandable: do not auto-request GPS on initial page mount; instead, show a clear prompt and require an explicit user click on “Use My Current Location” before calling the browser geolocation API.",
+      "featureId": "feature-reduce-perceived-instability-in-location-detection-and-tracking-by-preventing-conflicting-location-workflows-and-by-throttling-reducing-noisy-updates-context-the-app-supports-one-time-gps-detection-with-gps-ip-fallback-and-continuous-tracking-via-watchposition-users-report-that-web-site-location-unstable-implement-the-following-behaviors-if-continuous-tracking-is-active-disable-or-clearly-gate-the-one-time-detect-my-location-flow-so-the-two-mechanisms-do-not-compete-add-throttling-debouncing-to-continuous-tracking-triggered-searches-so-location-based-searches-are-not-triggered-too-frequently-even-when-coordinates-jitter-keep-the-existing-significant-change-check-but-also-enforce-a-minimum-time-interval-between-searches-reduce-user-facing-noise-avoid-firing-a-success-toast-on-every-tracking-update-only-toast-on-tracking-start-stop-and-on-meaningful-state-changes-e-g-first-fix-acquired-permission-denied-tracking-error-ensure-tracking-can-recover-cleanly-from-transient-errors-if-watchposition-emits-a-timeout-position-unavailable-error-reflect-it-in-ui-state-without-leaving-the-app-stuck-in-an-in-flight-state-and-allow-the-user-to-stop-restart-tracking",
+      "featureTitle": "Reduce perceived instability in location detection and tracking by preventing conflicting location workflows and by throttling/reducing noisy updates.\n\nContext: The app supports one-time GPS detection (with GPS->IP fallback) and continuous tracking via `watchPosition`. Users report that “web site location unstable”.\n\nImplement the following behaviors:\n- If continuous tracking is active, disable or clearly gate the one-time “Detect My Location” flow so the two mechanisms do not compete.\n- Add throttling/debouncing to continuous tracking-triggered searches so location-based searches are not triggered too frequently even when coordinates jitter; keep the existing “significant change” check but also enforce a minimum time interval between searches.\n- Reduce user-facing noise: avoid firing a success toast on every tracking update; only toast on tracking start/stop and on meaningful state changes (e.g., first fix acquired, permission denied, tracking error).\n- Ensure tracking can recover cleanly from transient errors: if `watchPosition` emits a TIMEOUT/POSITION_UNAVAILABLE error, reflect it in UI state without leaving the app stuck in an in-flight state, and allow the user to stop/restart tracking.",
       "files": [
-        "frontend/src/components/SearchSection.tsx"
+        "frontend/src/components/SearchSection.tsx",
+        "frontend/src/hooks/useGeolocationWatch.ts",
+        "frontend/src/lib/rateLimit.ts"
       ],
       "components": [
         "http-outcalls@3.0.0",
@@ -13,7 +15,8 @@
         "shadcn-ui@1.0.0",
         "build-template-react@1.0.0",
         "initial-app@1.0.0",
-        "github-export-icp-cli@1.0.0"
+        "github-export-icp-cli@1.0.0",
+        "authorization@4.0.0"
       ],
       "testIds": [
         "REQ-1"
@@ -21,10 +24,11 @@
       "confidence": "high"
     },
     {
-      "featureId": "feature-make-gps-detection-more-resilient-by-adding-a-two-pass-gps-strategy-first-attempt-with-high-accuracy-then-if-it-times-out-unavailable-retry-once-with-lower-accuracy-settings-before-falling-back-to-ip-based-geolocation-ensure-timeouts-are-not-duplicated-and-that-only-one-fallback-path-executes",
-      "featureTitle": "Make GPS detection more resilient by adding a two-pass GPS strategy: first attempt with high accuracy, then if it times out/unavailable, retry once with lower accuracy settings before falling back to IP-based geolocation. Ensure timeouts are not duplicated and that only one fallback path executes.",
+      "featureId": "feature-restore-and-harden-the-visit-counter-so-it-is-visible-even-when-backend-calls-fail-and-provide-a-clear-fallback-ui-context-app-tsx-fetches-totalvisits-via-usetrafficcounter-and-passes-values-to-footer-but-the-footer-currently-hides-the-counter-entirely-when-countererror-is-true-implement-the-following-always-render-a-total-visits-row-in-the-footer-if-the-counter-fails-show-a-non-blocking-fallback-such-as-total-visits-unavailable-english-text-add-a-lightweight-retry-strategy-on-the-frontend-for-the-counter-fetch-increment-e-g-one-retry-after-a-short-delay-so-transient-actor-network-failures-in-production-don-t-permanently-hide-the-counter-for-the-session-keep-the-rest-of-the-app-functional-even-if-the-counter-fails-no-hard-errors",
+      "featureTitle": "Restore and harden the visit counter so it is visible even when backend calls fail, and provide a clear fallback UI.\n\nContext: `App.tsx` fetches `totalVisits` via `useTrafficCounter()` and passes values to `Footer`, but the footer currently hides the counter entirely when `counterError` is true.\n\nImplement the following:\n- Always render a “Total visits” row in the footer. If the counter fails, show a non-blocking fallback such as “Total visits: unavailable” (English text).\n- Add a lightweight retry strategy on the frontend for the counter fetch/increment (e.g., one retry after a short delay) so transient actor/network failures in production don’t permanently hide the counter for the session.\n- Keep the rest of the app functional even if the counter fails (no hard errors).",
       "files": [
-        "frontend/src/components/SearchSection.tsx"
+        "frontend/src/components/Footer.tsx",
+        "frontend/src/hooks/useTrafficCounter.ts"
       ],
       "components": [
         "http-outcalls@3.0.0",
@@ -32,30 +36,11 @@
         "shadcn-ui@1.0.0",
         "build-template-react@1.0.0",
         "initial-app@1.0.0",
-        "github-export-icp-cli@1.0.0"
+        "github-export-icp-cli@1.0.0",
+        "authorization@4.0.0"
       ],
       "testIds": [
         "REQ-2"
-      ],
-      "confidence": "high"
-    },
-    {
-      "featureId": "feature-improve-user-facing-guidance-when-location-fails-detect-common-causes-non-secure-context-permission-denied-geolocation-not-supported-and-present-actionable-instructions-in-the-ui-in-english-including-how-to-enable-location-permission-for-the-site-and-the-option-to-use-city-search-instead",
-      "featureTitle": "Improve user-facing guidance when location fails: detect common causes (non-secure context, permission denied, geolocation not supported) and present actionable instructions in the UI (in English), including how to enable location permission for the site and the option to use city search instead.",
-      "files": [
-        "frontend/src/components/EmptyState.tsx",
-        "frontend/src/components/SearchSection.tsx"
-      ],
-      "components": [
-        "http-outcalls@3.0.0",
-        "core-infrastructure@1.0.2",
-        "shadcn-ui@1.0.0",
-        "build-template-react@1.0.0",
-        "initial-app@1.0.0",
-        "github-export-icp-cli@1.0.0"
-      ],
-      "testIds": [
-        "REQ-3"
       ],
       "confidence": "high"
     }

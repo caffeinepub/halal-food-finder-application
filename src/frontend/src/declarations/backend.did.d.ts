@@ -10,6 +10,8 @@ import type { ActorMethod } from '@icp-sdk/core/agent';
 import type { IDL } from '@icp-sdk/core/candid';
 import type { Principal } from '@icp-sdk/core/principal';
 
+export interface ConfirmationResponse { 'success' : string }
+export interface Location { 'latitude' : number, 'longitude' : number }
 export type Time = bigint;
 export interface TransformationInput {
   'context' : Uint8Array,
@@ -20,6 +22,10 @@ export interface TransformationOutput {
   'body' : Uint8Array,
   'headers' : Array<http_header>,
 }
+export interface UserProfile { 'name' : string }
+export type UserRole = { 'admin' : null } |
+  { 'user' : null } |
+  { 'guest' : null };
 export interface http_header { 'value' : string, 'name' : string }
 export interface http_request_result {
   'status' : bigint,
@@ -27,22 +33,33 @@ export interface http_request_result {
   'headers' : Array<http_header>,
 }
 export interface _SERVICE {
-  'clearCache' : ActorMethod<[string], undefined>,
+  '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
+  'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'clearApiCache' : ActorMethod<[], ConfirmationResponse>,
+  'clearCachePrefix' : ActorMethod<[string], undefined>,
+  'clearFoursquareApiKey' : ActorMethod<[], ConfirmationResponse>,
+  'foursquarePlacesSearch' : ActorMethod<[string], string>,
   'getCacheContents' : ActorMethod<[], Array<[string, string, Time]>>,
-  'getCacheCount' : ActorMethod<[], bigint>,
   'getCacheExpiration' : ActorMethod<[], bigint>,
   'getCacheTimeRemaining' : ActorMethod<[string], Time>,
   'getCachedData' : ActorMethod<[string], [] | [string]>,
+  'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
+  'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getErrorLog' : ActorMethod<[], Array<[Time, string]>>,
-  'getErrorLogCount' : ActorMethod<[], bigint>,
+  'getFoursquareApiKey' : ActorMethod<[], [] | [string]>,
   'getIpApiGeolocation' : ActorMethod<[], string>,
-  'getMaxConsecutiveErrors' : ActorMethod<[], bigint>,
-  'getMaxLogEntries' : ActorMethod<[], bigint>,
+  'getPageViews' : ActorMethod<[], bigint>,
   'getRequestStats' : ActorMethod<[], [bigint, bigint, bigint]>,
+  'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
+  'incrementPageViews' : ActorMethod<[], bigint>,
+  'isCallerAdmin' : ActorMethod<[], boolean>,
   'ping' : ActorMethod<[], undefined>,
   'proxyExternalApiGet' : ActorMethod<[string], string>,
   'proxyExternalApiPost' : ActorMethod<[string, string], string>,
+  'saveCallerUserProfile' : ActorMethod<[UserProfile], undefined>,
+  'setFoursquareApiKey' : ActorMethod<[string], ConfirmationResponse>,
   'transform' : ActorMethod<[TransformationInput], TransformationOutput>,
+  'validateCoordinates' : ActorMethod<[Location], boolean>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

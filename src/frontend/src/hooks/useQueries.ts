@@ -1,6 +1,9 @@
 import { useState, useCallback } from 'react';
 import { useActor } from './useActor';
 import { toast } from 'sonner';
+import { buildOverpassQuery, parseOverpassResponse } from '@/lib/overpass';
+import { mergeAndDeduplicateRestaurants, sortByDistance } from '@/lib/placesMerge';
+import { validateCoordinates } from '@/lib/coordinates';
 
 export interface Restaurant {
   id: string;
@@ -42,15 +45,17 @@ interface FoursquareVenue {
   website?: string;
 }
 
-const FOURSQUARE_API_KEY = 'fsq3YOUR_ACTUAL_API_KEY_HERE';
 const MAX_AUTO_RETRIES = 2;
 const RETRY_DELAY_MS = 2000;
+const MIN_RESULTS_THRESHOLD = 5;
+const MAX_RADIUS_METERS = 30000; // 30km maximum
 
 interface ErrorState {
   message: string;
   isRetrying: boolean;
   retryCount: number;
   canRetry: boolean;
+  isAuthError: boolean;
 }
 
 function getUserFriendlyError(error: unknown, retryCount: number = 0): ErrorState {
@@ -59,10 +64,33 @@ function getUserFriendlyError(error: unknown, retryCount: number = 0): ErrorStat
     isRetrying: false,
     retryCount,
     canRetry: true,
+    isAuthError: false,
   };
 
   if (error instanceof Error) {
     const message = error.message.toLowerCase();
+    
+    // Check for authorization/permission errors
+    if (message.includes('unauthorized') || message.includes('permission') || message.includes('forbidden') || message.includes('access denied')) {
+      return {
+        message: 'You need to be logged in to use this feature. Please log in and try again.',
+        isRetrying: false,
+        retryCount,
+        canRetry: false,
+        isAuthError: true,
+      };
+    }
+    
+    // Check for role-based access errors
+    if (message.includes('only admins') || message.includes('only users') || message.includes('admin only')) {
+      return {
+        message: 'This feature requires special permissions. Please log in with an authorized account.',
+        isRetrying: false,
+        retryCount,
+        canRetry: false,
+        isAuthError: true,
+      };
+    }
     
     if (message.includes('canister') || message.includes('stopped') || message.includes('ic0508') || message.includes('trap')) {
       return {
@@ -72,6 +100,7 @@ function getUserFriendlyError(error: unknown, retryCount: number = 0): ErrorStat
         isRetrying: true,
         retryCount,
         canRetry: true,
+        isAuthError: false,
       };
     }
     
@@ -81,6 +110,7 @@ function getUserFriendlyError(error: unknown, retryCount: number = 0): ErrorStat
         isRetrying: true,
         retryCount,
         canRetry: true,
+        isAuthError: false,
       };
     }
     
@@ -90,6 +120,7 @@ function getUserFriendlyError(error: unknown, retryCount: number = 0): ErrorStat
         isRetrying: false,
         retryCount,
         canRetry: true,
+        isAuthError: false,
       };
     }
     
@@ -99,6 +130,7 @@ function getUserFriendlyError(error: unknown, retryCount: number = 0): ErrorStat
         isRetrying: true,
         retryCount,
         canRetry: true,
+        isAuthError: false,
       };
     }
     
@@ -108,6 +140,7 @@ function getUserFriendlyError(error: unknown, retryCount: number = 0): ErrorStat
         isRetrying: false,
         retryCount,
         canRetry: false,
+        isAuthError: false,
       };
     }
   }
@@ -119,6 +152,16 @@ async function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Guard to detect backend error responses before JSON parsing.
+ * Throws an Error if the response is an error string.
+ */
+function guardBackendErrorResponse(response: string): void {
+  if (typeof response === 'string' && response.startsWith('Error:')) {
+    throw new Error(response);
+  }
+}
+
 export function useRestaurantSearch() {
   const { actor } = useActor();
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
@@ -127,17 +170,18 @@ export function useRestaurantSearch() {
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [safeMode, setSafeMode] = useState(false);
+  const [isAuthError, setIsAuthError] = useState(false);
 
   const parseVenues = (venues: FoursquareVenue[]): Restaurant[] => {
     return venues.map(venue => ({
       id: venue.fsq_id,
-      name: venue.name,
+      name: venue.name || 'Unknown',
       cuisine: venue.categories?.[0]?.name || 'Restaurant',
-      address: venue.location.address || venue.location.formatted_address || 'Address not available',
-      city: venue.location.locality || '',
-      country: venue.location.country || '',
-      latitude: venue.geocodes.main.latitude,
-      longitude: venue.geocodes.main.longitude,
+      address: venue.location?.address || venue.location?.formatted_address || '',
+      city: venue.location?.locality || '',
+      country: venue.location?.country || '',
+      latitude: venue.geocodes?.main?.latitude || 0,
+      longitude: venue.geocodes?.main?.longitude || 0,
       rating: venue.rating,
       phone: venue.tel,
       website: venue.website,
@@ -173,6 +217,12 @@ export function useRestaurantSearch() {
         lastError = err;
         const errorState = getUserFriendlyError(err, attempt);
         
+        // Don't retry authorization errors
+        if (errorState.isAuthError) {
+          setIsAuthError(true);
+          throw err;
+        }
+        
         if (attempt < MAX_AUTO_RETRIES && errorState.canRetry) {
           toast.info(errorState.message, {
             duration: RETRY_DELAY_MS,
@@ -199,54 +249,205 @@ export function useRestaurantSearch() {
     throw lastError;
   }, []);
 
+  /**
+   * Fetch Foursquare results using the backend's foursquarePlacesSearch method.
+   * The backend handles the API key internally and will return an error message if not configured.
+   * Returns empty array on failure (non-blocking).
+   */
+  const fetchFoursquareResults = async (
+    latitude: number,
+    longitude: number,
+    radius: number
+  ): Promise<Restaurant[]> => {
+    if (!actor) return [];
+
+    try {
+      // Initial strict search with halal category
+      const strictUrl = `https://api.foursquare.com/v3/places/search?ll=${latitude},${longitude}&query=halal&categories=13065&limit=50&radius=${radius}`;
+      
+      const strictResponse = await actor.foursquarePlacesSearch(strictUrl);
+
+      // Check if backend returned an error (not configured or other issue)
+      if (strictResponse.startsWith('Error:')) {
+        if (strictResponse.includes('not configured')) {
+          console.info('Foursquare not configured, skipping');
+          return [];
+        }
+        throw new Error(strictResponse);
+      }
+
+      const strictData = JSON.parse(strictResponse);
+      let allResults: FoursquareVenue[] = strictData.results || [];
+
+      // If initial results are sparse, perform broader halal-focused search
+      if (allResults.length < MIN_RESULTS_THRESHOLD) {
+        try {
+          const broadUrl = `https://api.foursquare.com/v3/places/search?ll=${latitude},${longitude}&query=halal restaurant food&limit=50&radius=${radius}`;
+          
+          const broadResponse = await actor.foursquarePlacesSearch(broadUrl);
+
+          if (!broadResponse.startsWith('Error:')) {
+            const broadData = JSON.parse(broadResponse);
+            
+            if (broadData.results && broadData.results.length > 0) {
+              const existingIds = new Set(allResults.map(v => v.fsq_id));
+              const newResults = broadData.results.filter((v: FoursquareVenue) => !existingIds.has(v.fsq_id));
+              allResults = [...allResults, ...newResults];
+            }
+          }
+        } catch (broadErr) {
+          console.warn('Foursquare broader search failed:', broadErr);
+        }
+      }
+
+      if (allResults.length > 0) {
+        return parseVenues(allResults);
+      }
+      return [];
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      
+      // If Foursquare is not configured, silently skip (non-blocking)
+      if (errorMsg.includes('not configured')) {
+        console.info('Foursquare API not configured, using OpenStreetMap only');
+        return [];
+      }
+      
+      // For other errors, log but don't block Overpass results
+      console.warn('Foursquare search failed:', err);
+      return [];
+    }
+  };
+
+  /**
+   * Fetch Overpass (OpenStreetMap) results via backend proxy.
+   * Returns empty array on failure (non-blocking).
+   */
+  const fetchOverpassResults = async (
+    latitude: number,
+    longitude: number,
+    radius: number
+  ): Promise<Restaurant[]> => {
+    if (!actor) return [];
+
+    try {
+      const query = buildOverpassQuery(latitude, longitude, radius);
+      const overpassUrl = 'https://overpass-api.de/api/interpreter';
+
+      const response = await executeWithRetry(
+        () => actor.proxyExternalApiPost(overpassUrl, query),
+        'Overpass search'
+      );
+
+      guardBackendErrorResponse(response);
+      const data = JSON.parse(response);
+
+      return parseOverpassResponse(data, latitude, longitude);
+    } catch (err) {
+      console.error('Overpass search failed:', err);
+      return [];
+    }
+  };
+
+  /**
+   * Search with automatic radius expansion if results are below threshold.
+   */
+  const searchWithRadiusExpansion = async (
+    latitude: number,
+    longitude: number,
+    initialRadius: number,
+    searchType: 'location' | 'city'
+  ): Promise<Restaurant[]> => {
+    const radii = [initialRadius];
+    
+    // Add expansion radii up to maximum
+    if (initialRadius < 20000) radii.push(20000);
+    if (initialRadius < MAX_RADIUS_METERS) radii.push(MAX_RADIUS_METERS);
+
+    let allResults: Restaurant[] = [];
+    let currentRadius = initialRadius;
+
+    for (let i = 0; i < radii.length; i++) {
+      currentRadius = radii[i];
+      
+      if (i > 0) {
+        toast.info(`Expanding search radius to ${Math.round(currentRadius / 1000)}km to find more places...`, {
+          duration: 2000,
+        });
+      }
+
+      // Fetch from multiple providers in parallel
+      // Foursquare failures will not block Overpass results
+      const [foursquareResults, overpassResults] = await Promise.all([
+        fetchFoursquareResults(latitude, longitude, currentRadius),
+        fetchOverpassResults(latitude, longitude, currentRadius),
+      ]);
+
+      // Merge and deduplicate with existing results
+      const newMerged = mergeAndDeduplicateRestaurants([
+        allResults,
+        foursquareResults,
+        overpassResults,
+      ]);
+
+      allResults = newMerged;
+
+      // Check if we have enough results
+      if (allResults.length >= MIN_RESULTS_THRESHOLD) {
+        break;
+      }
+
+      // Don't expand further if this is the last radius
+      if (i === radii.length - 1) {
+        break;
+      }
+    }
+
+    return allResults;
+  };
+
   const searchByLocation = async (latitude: number, longitude: number) => {
     if (!actor) {
       const errorMsg = 'Service connection not available. Please refresh the page and try again.';
       setError(errorMsg);
+      setIsAuthError(false);
       toast.error(errorMsg);
       return;
     }
 
-    if (!latitude || !longitude || isNaN(latitude) || isNaN(longitude)) {
-      const errorMsg = 'Invalid location coordinates. Please try searching by city name instead.';
+    // Use the shared coordinate validator
+    const validation = validateCoordinates(latitude, longitude);
+    
+    if (!validation.isValid) {
+      const errorMsg = validation.reason || 'Invalid location coordinates. Please try searching by city name instead.';
       setError(errorMsg);
-      toast.error(errorMsg);
-      return;
-    }
-
-    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
-      const errorMsg = 'Location coordinates are out of range. Please try searching by city name instead.';
-      setError(errorMsg);
+      setIsAuthError(false);
       toast.error(errorMsg);
       return;
     }
 
     setIsLoading(true);
     setError(null);
+    setIsAuthError(false);
 
     try {
-      const url = `https://api.foursquare.com/v3/places/search?ll=${latitude},${longitude}&query=halal&categories=13065&limit=50&radius=10000`;
-      const urlWithAuth = `${url}&Authorization=${FOURSQUARE_API_KEY}`;
-      
-      const response = await executeWithRetry(
-        () => actor.proxyExternalApiGet(urlWithAuth),
-        'location search'
-      );
-      
-      const data = JSON.parse(response);
+      const initialRadius = 10000; // 10km
+      const results = await searchWithRadiusExpansion(latitude, longitude, initialRadius, 'location');
 
-      if (data.results && data.results.length > 0) {
-        const parsedRestaurants = parseVenues(data.results);
-        setRestaurants(parsedRestaurants);
-        toast.success(`Found ${parsedRestaurants.length} halal restaurants nearby`);
-      } else {
+      if (results.length === 0) {
         setRestaurants([]);
         toast.info('No halal restaurants found in this area. Try searching a different location.');
+        return;
       }
+
+      const sorted = sortByDistance(results);
+      setRestaurants(sorted);
+      toast.success(`Found ${sorted.length} halal restaurants nearby`);
     } catch (err) {
       console.error('Search error:', err);
       const errorState = getUserFriendlyError(err);
       setError(errorState.message);
+      setIsAuthError(errorState.isAuthError);
       toast.error(errorState.message);
       setRestaurants([]);
     } finally {
@@ -258,6 +459,7 @@ export function useRestaurantSearch() {
     if (!actor) {
       const errorMsg = 'Service connection not available. Please refresh the page and try again.';
       setError(errorMsg);
+      setIsAuthError(false);
       toast.error(errorMsg);
       return;
     }
@@ -269,6 +471,7 @@ export function useRestaurantSearch() {
 
     setIsLoading(true);
     setError(null);
+    setIsAuthError(false);
 
     try {
       const geocodeUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cityName)}&format=json&limit=1`;
@@ -279,9 +482,21 @@ export function useRestaurantSearch() {
           () => actor.proxyExternalApiGet(geocodeUrl),
           'geocoding'
         );
+        guardBackendErrorResponse(geocodeResponse);
         geocodeData = JSON.parse(geocodeResponse);
       } catch (geocodeError) {
         console.error('Geocoding error:', geocodeError);
+        const errorState = getUserFriendlyError(geocodeError);
+        
+        if (errorState.isAuthError) {
+          setError(errorState.message);
+          setIsAuthError(true);
+          toast.error(errorState.message);
+          setRestaurants([]);
+          setIsLoading(false);
+          return;
+        }
+        
         const friendlyError = 'Unable to find that location. Please check the spelling and try again.';
         setError(friendlyError);
         toast.error(friendlyError);
@@ -303,8 +518,11 @@ export function useRestaurantSearch() {
       const latitude = parseFloat(lat);
       const longitude = parseFloat(lon);
 
-      if (isNaN(latitude) || isNaN(longitude)) {
-        const errorMsg = 'Unable to determine location coordinates. Please try a different city.';
+      // Use the shared coordinate validator
+      const validation = validateCoordinates(latitude, longitude);
+      
+      if (!validation.isValid) {
+        const errorMsg = validation.reason || 'Unable to determine location coordinates. Please try a different city.';
         setError(errorMsg);
         toast.error(errorMsg);
         setRestaurants([]);
@@ -312,28 +530,23 @@ export function useRestaurantSearch() {
         return;
       }
 
-      const url = `https://api.foursquare.com/v3/places/search?ll=${latitude},${longitude}&query=halal&categories=13065&limit=50&radius=15000`;
-      const urlWithAuth = `${url}&Authorization=${FOURSQUARE_API_KEY}`;
-      
-      const response = await executeWithRetry(
-        () => actor.proxyExternalApiGet(urlWithAuth),
-        'city search'
-      );
-      
-      const data = JSON.parse(response);
+      const initialRadius = 15000; // 15km for city searches
+      const results = await searchWithRadiusExpansion(latitude, longitude, initialRadius, 'city');
 
-      if (data.results && data.results.length > 0) {
-        const parsedRestaurants = parseVenues(data.results);
-        setRestaurants(parsedRestaurants);
-        toast.success(`Found ${parsedRestaurants.length} halal restaurants in ${cityName}`);
-      } else {
+      if (results.length === 0) {
         setRestaurants([]);
         toast.info(`No halal restaurants found in ${cityName}. Try searching a nearby city.`);
+        return;
       }
+
+      const sorted = sortByDistance(results);
+      setRestaurants(sorted);
+      toast.success(`Found ${sorted.length} halal restaurants in ${cityName}`);
     } catch (err) {
       console.error('Search error:', err);
       const errorState = getUserFriendlyError(err);
       setError(errorState.message);
+      setIsAuthError(errorState.isAuthError);
       toast.error(errorState.message);
       setRestaurants([]);
     } finally {
@@ -341,95 +554,77 @@ export function useRestaurantSearch() {
     }
   };
 
-  const clearResults = () => {
+  const clearResults = useCallback(() => {
     setRestaurants([]);
     setError(null);
-    setIsRetrying(false);
-    setRetryCount(0);
-  };
+    setIsAuthError(false);
+  }, []);
 
-  const exitSafeMode = () => {
+  const exitSafeMode = useCallback(() => {
     setSafeMode(false);
     setError(null);
-  };
+    setIsAuthError(false);
+    toast.success('Safe mode disabled. You can now try location-based search again.');
+  }, []);
 
   return {
     restaurants,
     isLoading,
     error,
-    isRetrying,
-    retryCount,
-    safeMode,
     searchByLocation,
     searchByCity,
     clearResults,
     exitSafeMode,
+    isRetrying,
+    retryCount,
+    safeMode,
+    isAuthError,
   };
 }
 
-export interface IPGeolocationResult {
-  lat: number;
-  lon: number;
-  city?: string;
-  country?: string;
-}
-
+/**
+ * Hook for IP-based geolocation using the backend proxy.
+ */
 export function useIPGeolocation() {
   const { actor } = useActor();
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const getIPLocation = useCallback(async (): Promise<IPGeolocationResult | null> => {
+  const getIPLocation = useCallback(async (): Promise<{
+    lat: number;
+    lon: number;
+    city?: string;
+    country?: string;
+  } | null> => {
     if (!actor) {
       console.error('Actor not available for IP geolocation');
-      setError('Service not available');
       return null;
     }
 
     setIsLoading(true);
-    setError(null);
-
     try {
-      console.log('Requesting IP-based geolocation from ip-api.com...');
       const response = await actor.getIpApiGeolocation();
       
-      let data;
-      try {
-        data = JSON.parse(response);
-        console.log('IP geolocation response:', data);
-      } catch (parseError) {
-        console.error('Failed to parse IP geolocation response:', parseError);
-        setError('Invalid response from location service');
-        return null;
-      }
+      guardBackendErrorResponse(response);
+      const data = JSON.parse(response);
 
-      if (data && data.status === 'success' && typeof data.lat === 'number' && typeof data.lon === 'number') {
-        const lat = data.lat;
-        const lon = data.lon;
+      // Check for success status and valid coordinate data
+      // Note: lat/lon can be 0 (valid coordinates), so check for existence with 'in' operator
+      if (data.status === 'success' && 'lat' in data && 'lon' in data) {
+        const lat = typeof data.lat === 'number' ? data.lat : parseFloat(data.lat);
+        const lon = typeof data.lon === 'number' ? data.lon : parseFloat(data.lon);
         
-        if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
-          console.log('Valid IP geolocation coordinates:', { lat, lon, city: data.city, country: data.country });
-          return {
-            lat,
-            lon,
-            city: data.city || undefined,
-            country: data.country || undefined,
-          };
-        } else {
-          console.error('Invalid coordinates from IP geolocation:', { lat, lon });
-        }
-      } else if (data && data.status === 'fail') {
-        console.error('IP geolocation API returned failure:', data.message);
-        setError(data.message || 'Unable to determine location from IP address');
-      } else {
-        console.error('Missing or invalid fields in IP geolocation response:', data);
+        return {
+          lat,
+          lon,
+          city: data.city,
+          country: data.country,
+        };
       }
 
-      setError('Unable to determine location from IP address');
+      console.error('IP geolocation failed:', data.message || 'Unknown error');
       return null;
     } catch (err) {
       console.error('IP geolocation error:', err);
-      setError('Failed to get IP-based location');
       return null;
     } finally {
       setIsLoading(false);
@@ -439,6 +634,5 @@ export function useIPGeolocation() {
   return {
     getIPLocation,
     isLoading,
-    error,
   };
 }

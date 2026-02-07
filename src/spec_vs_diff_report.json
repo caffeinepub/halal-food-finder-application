@@ -1,63 +1,58 @@
 {
   "kind": "spec_vs_diff_report",
   "version": "1.0",
-  "generatedAt": "2026-02-04T08:38:04.781Z",
-  "summary": "Frontend geolocation UX appears to be reworked (explicit click, staged states, two-pass GPS + guarded IP fallback, and updated empty-state copy). Backend changes shown add broad caching/retry/proxy/logging infrastructure, but the diff summary does not provide clear evidence that the IP geolocation outcall was switched to an HTTPS provider as required. Several additional frontend/backend changes are present that were not requested (and one violates the stated “immutable paths” constraint).",
+  "generatedAt": "2026-02-07T11:00:42.097Z",
+  "summary": "REQ-1 and REQ-2 appear implemented via rate-limiting/mutual-exclusion updates for tracking and a footer counter fallback plus retry logic. REQ-3 (persisting page views across upgrades using stable state) is not evidenced in the backend diff: `pageViews` is still a non-stable `var` with no upgrade hooks shown.",
   "missing_requirements": [
     {
-      "id": "REQ-4",
-      "requirement": "Harden IP-based fallback reliability by switching the backend IP geolocation outcall to a HTTPS-based endpoint/provider and keep response parsing compatible with expected fields (lat, lon, city, country, status/message equivalents).",
-      "reason": "The diff summary does not show any concrete change of the backend IP geolocation outcall to an HTTPS endpoint/provider; the only explicit provider mentioned remains ip-api.com, and no https:// endpoint is evidenced in the shown backend changes.",
+      "id": "REQ-3",
+      "requirement": "Persist the page view counter across future backend upgrades by storing the counter in stable canister state (while keeping incrementPageViews()/getPageViews() signatures unchanged).",
+      "reason": "The diff shows `pageViews` as a regular mutable variable (`var pageViews : Nat = 0;`) and does not show any `stable` state or preupgrade/postupgrade logic; therefore persistence across upgrades is not demonstrated.",
       "evidence": [
-        "backend/main.mo (truncated; no HTTPS IP geo endpoint shown)",
-        "frontend-file-summaries.txt (mentions parsing ip-api.com JSON)"
+        "backend/main.mo"
       ]
     }
   ],
   "hallucinated_features": [
     {
-      "description": "Backend HTTP proxy API with caching and retry logic (proxyExternalApiGet), cache clearing endpoint, and error log/telemetry-like structures (RequestStats, ErrorEntry, log management).",
-      "reason": "Not requested by any REQ; requirements only asked to switch IP geolocation outcall to HTTPS and keep parsing compatible.",
+      "description": "Expanded Overpass API query patterns and parsing/deduplication enhancements not required for location stability or the visit counter fix.",
+      "reason": "BuildRequest explicitly lists changing the restaurant search algorithm/data sources as a non-goal (beyond what is required for location stability), but the diff summary indicates substantive Overpass/query/merge changes.",
       "evidence": [
-        "backend/main.mo"
+        "frontend-file-summaries.txt (frontend/src/lib/overpass.ts, frontend/src/lib/placesMerge.ts)"
       ]
     },
     {
-      "description": "Modifications to Internet Identity hook file under an explicitly immutable frontend path (frontend/src/hooks/useInternetIdentity.ts).",
-      "reason": "BuildRequest constraints explicitly disallow editing this file path, and no requirement requested auth changes.",
+      "description": "Map resiliency features (automatic retry, graceful degradation, comprehensive map error handling) beyond requested location detection/tracking stabilization and visit counter display.",
+      "reason": "Not requested in REQ-1/REQ-2/REQ-3 and not part of stated goals; appears as additional functionality.",
       "evidence": [
-        "frontend/src/hooks/useInternetIdentity.ts"
+        "frontend-file-summaries.txt (frontend/src/components/RestaurantMap.tsx)"
       ]
     },
     {
-      "description": "UI/theme changes unrelated to location hardening (custom halal green OKLCH tokens; Tailwind config changes).",
-      "reason": "Not requested by any REQ (location UX + backend IP geo only).",
+      "description": "Theme/styling work including OKLCH color system, new halal color palette, and food-themed background styling.",
+      "reason": "Not requested by any requirement; constraints focus on specific functional fixes.",
       "evidence": [
         "frontend-file-summaries.txt (frontend/src/index.css, frontend/tailwind.config.js)"
       ]
     },
     {
-      "description": "Additional resilience/retry/safe-mode UX in RestaurantResults and RestaurantMap beyond the location detection requirements.",
-      "reason": "Not requested by REQ-1/2/3/4 (these focus on geolocation detection UX and backend IP fallback endpoint).",
+      "description": "UI copy/content additions (e.g., author attribution, caffeine.ai attribution, Arabic welcome text) beyond the specified English-only requirement scope.",
+      "reason": "Not requested by requirements; additionally, Arabic text conflicts with the constraint to use English for user-facing text (though the exact Arabic text is only referenced in summary).",
       "evidence": [
-        "frontend-file-summaries.txt (frontend/src/components/RestaurantResults.tsx, frontend/src/components/RestaurantMap.tsx)"
-      ]
-    },
-    {
-      "description": "Added repository metadata file project_state.json describing broad app features/telemetry endpoints.",
-      "reason": "Not requested by any REQ.",
-      "evidence": [
-        "project_state.json"
+        "frontend/src/components/Footer.tsx",
+        "frontend-file-summaries.txt (frontend/src/components/SearchSection.tsx)"
       ]
     }
   ],
-  "confidence": 0.62,
+  "confidence": 0.74,
   "changed_files": [
     "backend/main.mo",
     "frontend-file-summaries.txt",
-    "frontend/src/components/EmptyState.tsx",
+    "frontend/src/components/Footer.tsx",
     "frontend/src/components/SearchSection.tsx",
-    "frontend/src/hooks/useInternetIdentity.ts",
+    "frontend/src/hooks/useGeolocationWatch.ts",
+    "frontend/src/hooks/useTrafficCounter.ts",
+    "frontend/src/lib/rateLimit.ts",
     "project_state.json"
   ]
 }

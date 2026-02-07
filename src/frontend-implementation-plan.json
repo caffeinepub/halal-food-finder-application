@@ -1,58 +1,53 @@
 {
   "kind": "implementation_plan",
   "version": "1.0",
-  "title": "Harden location detection UX (explicit GPS prompt + resilient fallback + actionable guidance)",
+  "title": "Stabilize geolocation tracking UX and restore resilient visit counter display",
   "requirements": [
     {
       "id": "REQ-1",
-      "summary": "Stop auto-requesting GPS on initial mount; require an explicit click on “Use My Current Location” while preserving the existing multi-stage status messaging.",
+      "summary": "Prevent competing location flows, throttle watch-driven searches, reduce toast noise, and recover cleanly from transient tracking errors.",
       "acceptanceCriteria": [
-        "On first load, the app does not trigger the browser GPS permission prompt automatically.",
-        "Clicking “Use My Current Location” triggers the GPS permission prompt and starts the location detection flow.",
-        "The existing multi-stage status messaging remains visible and accurate throughout the flow."
+        "When continuous tracking is active, the one-time location detection flow cannot run concurrently (UI prevents it or stopping tracking is required first).",
+        "Continuous tracking updates do not trigger repeated searches more often than the configured minimum interval, even if the device reports frequent small position changes.",
+        "While tracking, the app does not show a success toast for every update; toasts occur only for start/stop and meaningful state transitions (e.g., first fix, errors).",
+        "If the browser reports transient watch errors (TIMEOUT/POSITION_UNAVAILABLE), the UI reflects the error and the user can stop and restart tracking without needing a full page refresh."
       ],
       "file_operations": [
         {
           "path": "frontend/src/components/SearchSection.tsx",
           "operation": "modify",
-          "description": "Remove the mount-time auto geolocation request (and any related toasts) so GPS permission is never requested automatically. Keep the multi-stage UI messaging, but only transition into permission/detection stages from an explicit user action (clicking the existing “Use My Current Location” button). Use existing shadcn-ui Button/Alert/Card patterns already in this file; verify the component's usage instructions before implementing."
+          "description": "Gate the one-time “Detect My Location” flow while continuous tracking is active (disable and/or require stopping tracking first) to prevent concurrent workflows. Add minimum time-interval throttling for watchPosition-triggered searches (in addition to the existing significant-change check) and remove per-update success toasts; only toast on start/stop and meaningful state transitions (e.g., first fix acquired, permission denied, tracking errors). Ensure UI state properly reflects transient tracking errors without leaving detection/tracking stuck in an in-flight state."
+        },
+        {
+          "path": "frontend/src/hooks/useGeolocationWatch.ts",
+          "operation": "modify",
+          "description": "Harden continuous tracking state management to recover from transient watch errors (TIMEOUT/POSITION_UNAVAILABLE): ensure status transitions and error state do not leave the hook in an in-flight/starting state, and allow stop/restart sequences to function reliably. Add/adjust returned state needed by the UI to toast only on meaningful transitions (e.g., expose a first-fix indicator or transition-friendly status fields)."
+        },
+        {
+          "path": "frontend/src/lib/rateLimit.ts",
+          "operation": "create",
+          "description": "Add a small utility to enforce a minimum interval between repeated actions (time-based rate limiting) suitable for watchPosition-driven search triggers; use it from SearchSection to prevent overly frequent searches due to coordinate jitter."
         }
       ]
     },
     {
       "id": "REQ-2",
-      "summary": "Implement a two-pass GPS strategy (high accuracy then low accuracy) with a single, non-duplicated timeout and a single IP fallback execution path.",
+      "summary": "Always display the visit counter row with an English fallback, and add a lightweight frontend retry so counter failures do not hide the counter for the session.",
       "acceptanceCriteria": [
-        "If high-accuracy GPS fails due to timeout or POSITION_UNAVAILABLE, the app performs one retry using less strict geolocation options (e.g., enableHighAccuracy: false, adjusted timeout/maximumAge).",
-        "If the retry fails, the app falls back to IP-based geolocation exactly once (no double-toasts, no repeated state transitions).",
-        "The “Detecting Location…” button state correctly reflects the active attempt (no stuck spinner)."
+        "The footer always shows a “Total visits:” label; when the counter cannot be retrieved it displays an English fallback value (e.g., “unavailable”) instead of hiding the row.",
+        "A transient failure to call the backend counter methods triggers an automatic retry at least once, without blocking the main UI.",
+        "Counter failures do not crash the app and do not prevent searching/browsing results."
       ],
       "file_operations": [
         {
-          "path": "frontend/src/components/SearchSection.tsx",
+          "path": "frontend/src/components/Footer.tsx",
           "operation": "modify",
-          "description": "Refactor geolocation flow into a single orchestrated attempt pipeline: (1) high-accuracy getCurrentPosition, (2) one retry with lower-accuracy options when the first attempt fails with TIMEOUT or POSITION_UNAVAILABLE, then (3) IP fallback if retry fails. Add internal guards (e.g., a ref-based inFlight/fallbackExecuted flag) so timeouts and callbacks cannot trigger multiple state transitions or duplicate toasts. Update stage modeling so UI/button loading text reflects which attempt is active and always clears loading/spinner on completion. Use existing shadcn-ui Button/Alert components already used in this file; verify the component's usage instructions before implementing."
-        }
-      ]
-    },
-    {
-      "id": "REQ-3",
-      "summary": "Provide actionable, English guidance for common location failures (non-secure context, permission denied, unsupported geolocation) and offer retry/city search alternatives.",
-      "acceptanceCriteria": [
-        "If the page is not in a secure context and GPS cannot be used, the UI explains that location requires HTTPS and suggests using city search.",
-        "If permission is denied, the UI explains how to re-enable location permissions in the browser/site settings and offers a retry button.",
-        "If geolocation is not supported, the UI clearly states this and automatically offers IP-based fallback or city search."
-      ],
-      "file_operations": [
-        {
-          "path": "frontend/src/components/SearchSection.tsx",
-          "operation": "modify",
-          "description": "Add user-facing guidance states/content based on detected failure causes: check window.isSecureContext before attempting GPS and present an Alert explaining HTTPS requirement + recommend city search; detect permission denied and show steps to re-enable site location permission (browser/site settings) plus a visible retry action; detect geolocation unsupported and show a clear message while offering IP fallback and/or city search. Ensure guidance integrates with (not replaces) the existing multi-stage messaging and does not introduce repeated fallback attempts. Use existing shadcn-ui Alert/Button components already used in this file; verify the component's usage instructions before implementing."
+          "description": "Always render a “Total visits:” row in the footer. When loading, show a non-blocking loading message; when an error occurs, show an English fallback value such as “unavailable” (do not hide the row based on counterError)."
         },
         {
-          "path": "frontend/src/components/EmptyState.tsx",
+          "path": "frontend/src/hooks/useTrafficCounter.ts",
           "operation": "modify",
-          "description": "Update the empty-state copy (English) to explicitly mention city search as an alternative when location access is blocked/disabled, aligning with the new guidance messaging (no new routes/pages)."
+          "description": "Add a lightweight retry strategy for increment/get (at least one automatic retry after a short delay) and keep failures non-fatal (no thrown errors). Ensure the hook settles loading state even when calls fail so the footer can render the fallback text and the rest of the app remains functional."
         }
       ]
     }

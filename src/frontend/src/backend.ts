@@ -89,9 +89,14 @@ export class ExternalBlob {
         return this;
     }
 }
-export interface TransformationInput {
-    context: Uint8Array;
-    response: http_request_result;
+export interface http_request_result {
+    status: bigint;
+    body: Uint8Array;
+    headers: Array<http_header>;
+}
+export interface Location {
+    latitude: number;
+    longitude: number;
 }
 export interface TransformationOutput {
     status: bigint;
@@ -99,46 +104,138 @@ export interface TransformationOutput {
     headers: Array<http_header>;
 }
 export type Time = bigint;
+export interface ConfirmationResponse {
+    success: string;
+}
+export interface TransformationInput {
+    context: Uint8Array;
+    response: http_request_result;
+}
+export interface UserProfile {
+    name: string;
+}
 export interface http_header {
     value: string;
     name: string;
 }
-export interface http_request_result {
-    status: bigint;
-    body: Uint8Array;
-    headers: Array<http_header>;
+export enum UserRole {
+    admin = "admin",
+    user = "user",
+    guest = "guest"
 }
 export interface backendInterface {
-    clearCache(prefix: string): Promise<void>;
+    _initializeAccessControlWithSecret(userSecret: string): Promise<void>;
+    assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    clearApiCache(): Promise<ConfirmationResponse>;
+    clearCachePrefix(prefix: string): Promise<void>;
+    clearFoursquareApiKey(): Promise<ConfirmationResponse>;
+    foursquarePlacesSearch(url: string): Promise<string>;
     getCacheContents(): Promise<Array<[string, string, Time]>>;
-    getCacheCount(): Promise<bigint>;
     getCacheExpiration(): Promise<bigint>;
     getCacheTimeRemaining(key: string): Promise<Time>;
     getCachedData(key: string): Promise<string | null>;
+    getCallerUserProfile(): Promise<UserProfile | null>;
+    getCallerUserRole(): Promise<UserRole>;
     getErrorLog(): Promise<Array<[Time, string]>>;
-    getErrorLogCount(): Promise<bigint>;
+    getFoursquareApiKey(): Promise<string | null>;
     getIpApiGeolocation(): Promise<string>;
-    getMaxConsecutiveErrors(): Promise<bigint>;
-    getMaxLogEntries(): Promise<bigint>;
+    getPageViews(): Promise<bigint>;
     getRequestStats(): Promise<[bigint, bigint, bigint]>;
+    getUserProfile(user: Principal): Promise<UserProfile | null>;
+    incrementPageViews(): Promise<bigint>;
+    isCallerAdmin(): Promise<boolean>;
     ping(): Promise<void>;
     proxyExternalApiGet(url: string): Promise<string>;
     proxyExternalApiPost(url: string, body: string): Promise<string>;
+    saveCallerUserProfile(profile: UserProfile): Promise<void>;
+    setFoursquareApiKey(key: string): Promise<ConfirmationResponse>;
     transform(input: TransformationInput): Promise<TransformationOutput>;
+    validateCoordinates(location: Location): Promise<boolean>;
 }
+import type { UserProfile as _UserProfile, UserRole as _UserRole } from "./declarations/backend.did.d.ts";
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
-    async clearCache(arg0: string): Promise<void> {
+    async _initializeAccessControlWithSecret(arg0: string): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.clearCache(arg0);
+                const result = await this.actor._initializeAccessControlWithSecret(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.clearCache(arg0);
+            const result = await this.actor._initializeAccessControlWithSecret(arg0);
+            return result;
+        }
+    }
+    async assignCallerUserRole(arg0: Principal, arg1: UserRole): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n1(this._uploadFile, this._downloadFile, arg1));
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.assignCallerUserRole(arg0, to_candid_UserRole_n1(this._uploadFile, this._downloadFile, arg1));
+            return result;
+        }
+    }
+    async clearApiCache(): Promise<ConfirmationResponse> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.clearApiCache();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.clearApiCache();
+            return result;
+        }
+    }
+    async clearCachePrefix(arg0: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.clearCachePrefix(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.clearCachePrefix(arg0);
+            return result;
+        }
+    }
+    async clearFoursquareApiKey(): Promise<ConfirmationResponse> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.clearFoursquareApiKey();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.clearFoursquareApiKey();
+            return result;
+        }
+    }
+    async foursquarePlacesSearch(arg0: string): Promise<string> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.foursquarePlacesSearch(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.foursquarePlacesSearch(arg0);
             return result;
         }
     }
@@ -153,20 +250,6 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.getCacheContents();
-            return result;
-        }
-    }
-    async getCacheCount(): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getCacheCount();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getCacheCount();
             return result;
         }
     }
@@ -202,14 +285,42 @@ export class Backend implements backendInterface {
         if (this.processError) {
             try {
                 const result = await this.actor.getCachedData(arg0);
-                return from_candid_opt_n1(this._uploadFile, this._downloadFile, result);
+                return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
             const result = await this.actor.getCachedData(arg0);
-            return from_candid_opt_n1(this._uploadFile, this._downloadFile, result);
+            return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getCallerUserProfile(): Promise<UserProfile | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCallerUserProfile();
+                return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCallerUserProfile();
+            return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async getCallerUserRole(): Promise<UserRole> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getCallerUserRole();
+                return from_candid_UserRole_n5(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getCallerUserRole();
+            return from_candid_UserRole_n5(this._uploadFile, this._downloadFile, result);
         }
     }
     async getErrorLog(): Promise<Array<[Time, string]>> {
@@ -226,18 +337,18 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async getErrorLogCount(): Promise<bigint> {
+    async getFoursquareApiKey(): Promise<string | null> {
         if (this.processError) {
             try {
-                const result = await this.actor.getErrorLogCount();
-                return result;
+                const result = await this.actor.getFoursquareApiKey();
+                return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getErrorLogCount();
-            return result;
+            const result = await this.actor.getFoursquareApiKey();
+            return from_candid_opt_n3(this._uploadFile, this._downloadFile, result);
         }
     }
     async getIpApiGeolocation(): Promise<string> {
@@ -254,31 +365,17 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async getMaxConsecutiveErrors(): Promise<bigint> {
+    async getPageViews(): Promise<bigint> {
         if (this.processError) {
             try {
-                const result = await this.actor.getMaxConsecutiveErrors();
+                const result = await this.actor.getPageViews();
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getMaxConsecutiveErrors();
-            return result;
-        }
-    }
-    async getMaxLogEntries(): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getMaxLogEntries();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getMaxLogEntries();
+            const result = await this.actor.getPageViews();
             return result;
         }
     }
@@ -302,6 +399,48 @@ export class Backend implements backendInterface {
                 result[1],
                 result[2]
             ];
+        }
+    }
+    async getUserProfile(arg0: Principal): Promise<UserProfile | null> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getUserProfile(arg0);
+                return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getUserProfile(arg0);
+            return from_candid_opt_n4(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async incrementPageViews(): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.incrementPageViews();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.incrementPageViews();
+            return result;
+        }
+    }
+    async isCallerAdmin(): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.isCallerAdmin();
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.isCallerAdmin();
+            return result;
         }
     }
     async ping(): Promise<void> {
@@ -346,6 +485,34 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async saveCallerUserProfile(arg0: UserProfile): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveCallerUserProfile(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveCallerUserProfile(arg0);
+            return result;
+        }
+    }
+    async setFoursquareApiKey(arg0: string): Promise<ConfirmationResponse> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.setFoursquareApiKey(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.setFoursquareApiKey(arg0);
+            return result;
+        }
+    }
     async transform(arg0: TransformationInput): Promise<TransformationOutput> {
         if (this.processError) {
             try {
@@ -360,9 +527,56 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async validateCoordinates(arg0: Location): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.validateCoordinates(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.validateCoordinates(arg0);
+            return result;
+        }
+    }
 }
-function from_candid_opt_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
+function from_candid_UserRole_n5(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _UserRole): UserRole {
+    return from_candid_variant_n6(_uploadFile, _downloadFile, value);
+}
+function from_candid_opt_n3(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [string]): string | null {
     return value.length === 0 ? null : value[0];
+}
+function from_candid_opt_n4(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: [] | [_UserProfile]): UserProfile | null {
+    return value.length === 0 ? null : value[0];
+}
+function from_candid_variant_n6(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: {
+    admin: null;
+} | {
+    user: null;
+} | {
+    guest: null;
+}): UserRole {
+    return "admin" in value ? UserRole.admin : "user" in value ? UserRole.user : "guest" in value ? UserRole.guest : value;
+}
+function to_candid_UserRole_n1(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): _UserRole {
+    return to_candid_variant_n2(_uploadFile, _downloadFile, value);
+}
+function to_candid_variant_n2(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: UserRole): {
+    admin: null;
+} | {
+    user: null;
+} | {
+    guest: null;
+} {
+    return value == UserRole.admin ? {
+        admin: null
+    } : value == UserRole.user ? {
+        user: null
+    } : value == UserRole.guest ? {
+        guest: null
+    } : value;
 }
 export interface CreateActorOptions {
     agent?: Agent;

@@ -1,11 +1,17 @@
-import { useState, useRef } from 'react';
-import { MapPin, Search, Loader2, RefreshCw, Navigation, AlertCircle, ShieldAlert, Info } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { MapPin, Search, Loader2, RefreshCw, Navigation, AlertCircle, ShieldAlert, Info, CheckCircle, XCircle, Play, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { useIPGeolocation } from '@/hooks/useQueries';
+import { useLocationDiagnostics } from '@/hooks/useLocationDiagnostics';
+import { useGeolocationWatch } from '@/hooks/useGeolocationWatch';
+import { validateCoordinates } from '@/lib/coordinates';
+import { RateLimiter } from '@/lib/rateLimit';
 
 interface SearchSectionProps {
   onLocationSearch: (lat: number, lon: number) => void;
@@ -40,6 +46,7 @@ interface GeolocationState {
 
 const GPS_HIGH_ACCURACY_TIMEOUT_MS = 8000;
 const GPS_LOW_ACCURACY_TIMEOUT_MS = 6000;
+const TRACKING_SEARCH_INTERVAL_MS = 10000; // Minimum 10 seconds between searches
 
 export function SearchSection({ onLocationSearch, onCitySearch, isLoading }: SearchSectionProps) {
   const [cityInput, setCityInput] = useState('');
@@ -54,7 +61,13 @@ export function SearchSection({ onLocationSearch, onCitySearch, isLoading }: Sea
   const gpsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const fallbackExecutedRef = useRef(false);
   const inFlightRef = useRef(false);
+  const lastSearchCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
+  const searchRateLimiterRef = useRef(new RateLimiter(TRACKING_SEARCH_INTERVAL_MS));
+  const isFirstTrackingFixRef = useRef(true);
+  
   const { getIPLocation, isLoading: isIPLoading } = useIPGeolocation();
+  const diagnostics = useLocationDiagnostics();
+  const geoWatch = useGeolocationWatch();
 
   const isGeolocationSupported = (): boolean => {
     return 'geolocation' in navigator && !!navigator.geolocation;
@@ -64,24 +77,6 @@ export function SearchSection({ onLocationSearch, onCitySearch, isLoading }: Sea
     return window.isSecureContext;
   };
 
-  const validateCoordinates = (lat: number, lon: number): boolean => {
-    const isValid = (
-      !isNaN(lat) &&
-      !isNaN(lon) &&
-      isFinite(lat) &&
-      isFinite(lon) &&
-      lat >= -90 &&
-      lat <= 90 &&
-      lon >= -180 &&
-      lon <= 180 &&
-      lat !== 0 &&
-      lon !== 0
-    );
-    
-    console.log('Coordinate validation:', { lat, lon, isValid });
-    return isValid;
-  };
-
   const clearGPSTimeout = () => {
     if (gpsTimeoutRef.current) {
       clearTimeout(gpsTimeoutRef.current);
@@ -89,9 +84,58 @@ export function SearchSection({ onLocationSearch, onCitySearch, isLoading }: Sea
     }
   };
 
+  // Handle continuous tracking updates
+  useEffect(() => {
+    if (geoWatch.status === 'tracking' && geoWatch.position) {
+      const { latitude, longitude } = geoWatch.position.coords;
+      
+      // Check for significant coordinate change (>50m)
+      let significantChange = false;
+      if (lastSearchCoordsRef.current) {
+        const latDiff = Math.abs(latitude - lastSearchCoordsRef.current.lat);
+        const lonDiff = Math.abs(longitude - lastSearchCoordsRef.current.lon);
+        significantChange = latDiff > 0.0005 || lonDiff > 0.0005; // ~50m
+      } else {
+        // First position update
+        significantChange = true;
+      }
+
+      if (!significantChange) {
+        return;
+      }
+
+      // Apply rate limiting to prevent overly frequent searches
+      const canSearch = searchRateLimiterRef.current.canExecute();
+      if (!canSearch) {
+        console.log('Search rate-limited, skipping update');
+        return;
+      }
+
+      const validation = validateCoordinates(latitude, longitude);
+      if (validation.isValid) {
+        lastSearchCoordsRef.current = { lat: latitude, lon: longitude };
+        searchRateLimiterRef.current.markExecuted();
+        onLocationSearch(latitude, longitude);
+        
+        // Only toast on first fix or meaningful transitions, not every update
+        if (isFirstTrackingFixRef.current) {
+          toast.success('Location acquired', { duration: 2000 });
+          isFirstTrackingFixRef.current = false;
+        }
+      }
+    }
+  }, [geoWatch.position, onLocationSearch]);
+
+  // Reset first-fix flag when tracking stops
+  useEffect(() => {
+    if (geoWatch.status === 'stopped' || geoWatch.status === 'idle') {
+      isFirstTrackingFixRef.current = true;
+    }
+  }, [geoWatch.status]);
+
   const fallbackToIPLocation = async () => {
-    if (fallbackExecutedRef.current || inFlightRef.current) {
-      console.log('IP fallback already executed or in flight, skipping');
+    if (fallbackExecutedRef.current) {
+      console.log('IP fallback already executed, skipping');
       return;
     }
 
@@ -110,33 +154,40 @@ export function SearchSection({ onLocationSearch, onCitySearch, isLoading }: Sea
     try {
       const ipLocation = await getIPLocation();
       
-      if (ipLocation && validateCoordinates(ipLocation.lat, ipLocation.lon)) {
-        console.log('IP geolocation successful:', ipLocation);
-        
-        setGeoState({
-          stage: 'validating',
-          locationSource: 'IP',
-          coordinates: { lat: ipLocation.lat, lon: ipLocation.lon },
-          city: ipLocation.city,
-          country: ipLocation.country,
-          errorMessage: null,
-          canRetry: true,
-        });
-
-        const locationMsg = ipLocation.city && ipLocation.country
-          ? `Location detected: ${ipLocation.city}, ${ipLocation.country} (IP-based)`
-          : 'Approximate location detected (IP-based)';
-        
-        toast.success(locationMsg, { duration: 3000 });
-        
-        setTimeout(() => {
-          setGeoState(prev => ({ ...prev, stage: 'success' }));
-          onLocationSearch(ipLocation.lat, ipLocation.lon);
-          inFlightRef.current = false;
-        }, 500);
-      } else {
-        throw new Error('Invalid IP location data');
+      if (!ipLocation) {
+        throw new Error('IP geolocation returned no data');
       }
+
+      const validation = validateCoordinates(ipLocation.lat, ipLocation.lon);
+      
+      if (!validation.isValid) {
+        console.error('Invalid IP coordinates:', ipLocation, validation.reason);
+        throw new Error(validation.reason || 'Invalid IP location data');
+      }
+
+      console.log('IP geolocation successful:', ipLocation);
+      
+      setGeoState({
+        stage: 'validating',
+        locationSource: 'IP',
+        coordinates: { lat: ipLocation.lat, lon: ipLocation.lon },
+        city: ipLocation.city,
+        country: ipLocation.country,
+        errorMessage: null,
+        canRetry: true,
+      });
+
+      const locationMsg = ipLocation.city && ipLocation.country
+        ? `Location detected: ${ipLocation.city}, ${ipLocation.country} (IP-based)`
+        : 'Approximate location detected (IP-based)';
+      
+      toast.success(locationMsg, { duration: 3000 });
+      
+      setTimeout(() => {
+        setGeoState(prev => ({ ...prev, stage: 'success' }));
+        onLocationSearch(ipLocation.lat, ipLocation.lon);
+        inFlightRef.current = false;
+      }, 500);
     } catch (err) {
       console.error('IP geolocation fallback failed:', err);
       setGeoState({
@@ -151,20 +202,21 @@ export function SearchSection({ onLocationSearch, onCitySearch, isLoading }: Sea
     }
   };
 
-  const handleGeolocationSuccess = (position: GeolocationPosition, isRetry: boolean = false) => {
-    if (!inFlightRef.current) {
-      console.log('Success callback fired but request not in flight, ignoring');
-      return;
-    }
-
+  const handleGeolocationSuccess = (position: GeolocationPosition, source: 'high-accuracy' | 'low-accuracy') => {
     clearGPSTimeout();
     
-    const { latitude, longitude, accuracy } = position.coords;
-    console.log(`GPS geolocation success (${isRetry ? 'low-accuracy retry' : 'high-accuracy'}):`, { latitude, longitude, accuracy });
+    const { latitude, longitude } = position.coords;
+    console.log(`GPS geolocation successful (${source}):`, { latitude, longitude });
 
-    if (!validateCoordinates(latitude, longitude)) {
-      console.error('Invalid GPS coordinates received, falling back to IP');
-      toast.warning('GPS coordinates invalid, using IP-based location...', { duration: 2000 });
+    const validation = validateCoordinates(latitude, longitude);
+    
+    if (!validation.isValid) {
+      console.error('Invalid GPS coordinates received:', { latitude, longitude }, validation.reason);
+      setGeoState(prev => ({
+        ...prev,
+        errorMessage: validation.reason || 'Invalid GPS coordinates',
+      }));
+      toast.warning('GPS coordinates invalid, trying IP fallback...', { duration: 2000 });
       fallbackToIPLocation();
       return;
     }
@@ -177,12 +229,8 @@ export function SearchSection({ onLocationSearch, onCitySearch, isLoading }: Sea
       canRetry: true,
     });
 
-    const accuracyMsg = accuracy < 100 
-      ? `Precise GPS location detected (±${Math.round(accuracy)}m)`
-      : 'GPS location detected';
-    
-    toast.success(accuracyMsg, { duration: 3000 });
-    
+    toast.success('Location detected via GPS', { duration: 2000 });
+
     setTimeout(() => {
       setGeoState(prev => ({ ...prev, stage: 'success' }));
       onLocationSearch(latitude, longitude);
@@ -191,108 +239,86 @@ export function SearchSection({ onLocationSearch, onCitySearch, isLoading }: Sea
     }, 500);
   };
 
-  const handleGeolocationError = (error: GeolocationPositionError, isRetry: boolean = false) => {
-    if (!inFlightRef.current) {
-      console.log('Error callback fired but request not in flight, ignoring');
+  const handleGeolocationError = (error: GeolocationPositionError, isHighAccuracy: boolean) => {
+    console.error(`GPS geolocation error (${isHighAccuracy ? 'high' : 'low'} accuracy):`, error);
+    clearGPSTimeout();
+
+    if (error.code === error.PERMISSION_DENIED) {
+      setGeoState({
+        stage: 'permission-denied',
+        locationSource: null,
+        coordinates: null,
+        errorMessage: 'Location access was denied. Please enable location permissions in your browser settings or search by city name.',
+        canRetry: false,
+      });
+      toast.error('Location permission denied. Please search by city name.', { duration: 4000 });
+      inFlightRef.current = false;
       return;
     }
 
-    clearGPSTimeout();
-    
-    let errorReason = '';
-    let shouldRetry = false;
-
-    switch (error.code) {
-      case error.PERMISSION_DENIED:
-        errorReason = 'Location permission denied';
-        console.warn('GPS permission denied by user');
-        setGeoState({
-          stage: 'permission-denied',
-          locationSource: null,
-          coordinates: null,
-          errorMessage: 'Location permission was denied. Please enable location access in your browser settings to use GPS.',
-          canRetry: true,
-        });
-        inFlightRef.current = false;
-        return;
-      case error.POSITION_UNAVAILABLE:
-        errorReason = 'GPS position unavailable';
-        console.warn('GPS position unavailable');
-        shouldRetry = !isRetry;
-        break;
-      case error.TIMEOUT:
-        errorReason = 'GPS request timed out';
-        console.warn('GPS request timed out');
-        shouldRetry = !isRetry;
-        break;
-      default:
-        errorReason = 'GPS error';
-        console.warn('Unknown GPS error:', error.message);
-        shouldRetry = !isRetry;
-    }
-
-    if (shouldRetry) {
-      console.log('Retrying with low-accuracy GPS settings...');
+    if (isHighAccuracy) {
+      console.log('High-accuracy GPS failed, trying low-accuracy GPS...');
       setGeoState(prev => ({ ...prev, stage: 'detecting-gps-low' }));
-      toast.info('Retrying with less strict GPS settings...', { duration: 2000 });
       
+      gpsTimeoutRef.current = setTimeout(() => {
+        console.log('Low-accuracy GPS timeout, falling back to IP...');
+        fallbackToIPLocation();
+      }, GPS_LOW_ACCURACY_TIMEOUT_MS);
+
       navigator.geolocation.getCurrentPosition(
-        (pos) => handleGeolocationSuccess(pos, true),
-        (err) => {
-          console.warn('Low-accuracy GPS also failed, falling back to IP');
-          toast.info('GPS unavailable, switching to IP-based location...', { duration: 2000 });
-          fallbackToIPLocation();
-        },
+        (pos) => handleGeolocationSuccess(pos, 'low-accuracy'),
+        (err) => handleGeolocationError(err, false),
         {
           enableHighAccuracy: false,
           timeout: GPS_LOW_ACCURACY_TIMEOUT_MS,
-          maximumAge: 60000,
+          maximumAge: 300000,
         }
       );
     } else {
-      toast.info(`${errorReason}, switching to IP-based location...`, { duration: 2000 });
+      console.log('Low-accuracy GPS also failed, falling back to IP...');
       fallbackToIPLocation();
     }
   };
 
-  const requestGeolocation = () => {
+  const handleDetectLocation = () => {
+    // Prevent concurrent one-time detection while tracking is active
+    if (geoWatch.isTracking) {
+      toast.warning('Please stop continuous tracking first', { duration: 3000 });
+      return;
+    }
+
     if (inFlightRef.current) {
-      console.log('Geolocation request already in flight, ignoring');
+      console.log('Location detection already in progress, ignoring click');
       return;
     }
 
     if (!isSecureContext()) {
-      console.warn('Not in secure context (HTTPS required for GPS)');
       setGeoState({
         stage: 'not-secure',
         locationSource: null,
         coordinates: null,
-        errorMessage: 'Location access requires a secure connection (HTTPS). Please use city search instead.',
+        errorMessage: 'Location detection requires a secure connection (HTTPS). Please search by city name instead.',
         canRetry: false,
       });
-      toast.error('GPS requires HTTPS. Please use city search.', { duration: 4000 });
+      toast.error('Secure connection required for location detection', { duration: 4000 });
       return;
     }
 
     if (!isGeolocationSupported()) {
-      console.warn('Geolocation not supported by browser');
       setGeoState({
         stage: 'not-supported',
         locationSource: null,
         coordinates: null,
-        errorMessage: 'Your browser does not support location detection. Using IP-based fallback...',
+        errorMessage: 'Your browser does not support location detection. Please search by city name instead.',
         canRetry: false,
       });
-      toast.info('GPS not supported, using IP-based location...', { duration: 2000 });
-      fallbackToIPLocation();
+      toast.error('Location detection not supported', { duration: 4000 });
       return;
     }
 
     inFlightRef.current = true;
     fallbackExecutedRef.current = false;
-    clearGPSTimeout();
 
-    console.log('Starting geolocation request (high-accuracy)...');
     setGeoState({
       stage: 'requesting-permission',
       locationSource: null,
@@ -301,29 +327,33 @@ export function SearchSection({ onLocationSearch, onCitySearch, isLoading }: Sea
       canRetry: true,
     });
 
-    gpsTimeoutRef.current = setTimeout(() => {
-      if (inFlightRef.current && !fallbackExecutedRef.current) {
-        console.warn('GPS timeout reached, falling back to IP');
-        toast.warning('GPS taking too long, using IP-based location...', { duration: 2000 });
-        fallbackToIPLocation();
-      }
-    }, GPS_HIGH_ACCURACY_TIMEOUT_MS);
-
+    console.log('Starting GPS geolocation (high-accuracy)...');
     setGeoState(prev => ({ ...prev, stage: 'detecting-gps-high' }));
 
+    gpsTimeoutRef.current = setTimeout(() => {
+      console.log('High-accuracy GPS timeout, trying low-accuracy...');
+      setGeoState(prev => ({ ...prev, stage: 'detecting-gps-low' }));
+    }, GPS_HIGH_ACCURACY_TIMEOUT_MS);
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => handleGeolocationSuccess(pos, false),
-      (err) => handleGeolocationError(err, false),
+      (pos) => handleGeolocationSuccess(pos, 'high-accuracy'),
+      (err) => handleGeolocationError(err, true),
       {
         enableHighAccuracy: true,
-        timeout: GPS_HIGH_ACCURACY_TIMEOUT_MS - 1000,
+        timeout: GPS_HIGH_ACCURACY_TIMEOUT_MS,
         maximumAge: 0,
       }
     );
   };
 
-  const handleRetryLocation = () => {
-    console.log('User requested location retry');
+  const handleCitySearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cityInput.trim()) {
+      onCitySearch(cityInput.trim());
+    }
+  };
+
+  const handleRetry = () => {
     setGeoState({
       stage: 'idle',
       locationSource: null,
@@ -334,262 +364,304 @@ export function SearchSection({ onLocationSearch, onCitySearch, isLoading }: Sea
     inFlightRef.current = false;
     fallbackExecutedRef.current = false;
     clearGPSTimeout();
-    toast.info('Retrying location detection...');
-    requestGeolocation();
   };
 
-  const handleCitySearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (cityInput.trim()) {
-      onCitySearch(cityInput.trim());
+  const handleStartTracking = () => {
+    // Prevent tracking while one-time detection is in progress
+    if (inFlightRef.current) {
+      toast.warning('Please wait for location detection to complete', { duration: 3000 });
+      return;
     }
+
+    searchRateLimiterRef.current.reset();
+    lastSearchCoordsRef.current = null;
+    isFirstTrackingFixRef.current = true;
+    geoWatch.startTracking();
+    toast.success('Continuous tracking started', { duration: 2000 });
   };
 
-  const getStageMessage = (): { title: string; description: string; icon: React.ReactNode; variant?: 'default' | 'warning' | 'info' } | null => {
+  const handleStopTracking = () => {
+    geoWatch.stopTracking();
+    lastSearchCoordsRef.current = null;
+    searchRateLimiterRef.current.reset();
+    isFirstTrackingFixRef.current = true;
+    toast.info('Tracking stopped', { duration: 2000 });
+  };
+
+  const isDetecting = 
+    geoState.stage === 'requesting-permission' ||
+    geoState.stage === 'detecting-gps-high' ||
+    geoState.stage === 'detecting-gps-low' ||
+    geoState.stage === 'fallback-ip' ||
+    geoState.stage === 'validating';
+
+  const getDetectionMessage = () => {
     switch (geoState.stage) {
       case 'requesting-permission':
-        return {
-          title: 'Requesting Location Permission',
-          description: 'Please allow location access in your browser to find nearby halal restaurants.',
-          icon: <Loader2 className="h-4 w-4 animate-spin text-halal" />,
-        };
+        return 'Requesting location permission...';
       case 'detecting-gps-high':
-        return {
-          title: 'Detecting GPS Location',
-          description: 'Getting your precise location using GPS...',
-          icon: <Loader2 className="h-4 w-4 animate-spin text-halal" />,
-        };
+        return 'Detecting your location (GPS)...';
       case 'detecting-gps-low':
-        return {
-          title: 'Retrying GPS Detection',
-          description: 'Attempting to get your location with adjusted settings...',
-          icon: <Loader2 className="h-4 w-4 animate-spin text-halal" />,
-        };
+        return 'Refining location detection...';
       case 'fallback-ip':
-        return {
-          title: 'Using IP-Based Location',
-          description: 'Determining your approximate location using your IP address...',
-          icon: <Loader2 className="h-4 w-4 animate-spin text-blue-600" />,
-          variant: 'info',
-        };
+        return 'Using IP-based location...';
       case 'validating':
-        return {
-          title: 'Validating Coordinates',
-          description: `Validating ${geoState.locationSource === 'GPS' ? 'GPS' : 'IP-based'} location coordinates...`,
-          icon: <Loader2 className="h-4 w-4 animate-spin text-halal" />,
-        };
+        return 'Validating location...';
       case 'success':
-        if (geoState.locationSource === 'IP') {
-          return {
-            title: 'Location Detected (IP-Based)',
-            description: geoState.city && geoState.country
-              ? `Showing results near ${geoState.city}, ${geoState.country}. For more accurate results, enable GPS and retry.`
-              : 'Showing results based on approximate location. For more accurate results, enable GPS and retry.',
-            icon: <Navigation className="h-4 w-4 text-blue-600" />,
-            variant: 'info',
-          };
-        } else if (geoState.locationSource === 'GPS') {
-          return {
-            title: 'GPS Location Detected',
-            description: 'Showing results based on your precise GPS location.',
-            icon: <MapPin className="h-4 w-4 text-halal" />,
-          };
-        }
-        return null;
-      case 'permission-denied':
-        return {
-          title: 'Location Permission Denied',
-          description: 'To enable location access: Click the lock icon in your browser\'s address bar, then allow location permissions for this site. After enabling, click the retry button below.',
-          icon: <ShieldAlert className="h-4 w-4 text-yellow-600" />,
-          variant: 'warning',
-        };
-      case 'not-secure':
-        return {
-          title: 'Secure Connection Required',
-          description: 'GPS location requires HTTPS. Please use the city search below to find halal restaurants in your area.',
-          icon: <AlertCircle className="h-4 w-4 text-yellow-600" />,
-          variant: 'warning',
-        };
-      case 'not-supported':
-        return {
-          title: 'GPS Not Supported',
-          description: 'Your browser does not support GPS location. We\'ll use IP-based location detection or you can search by city name.',
-          icon: <Info className="h-4 w-4 text-blue-600" />,
-          variant: 'info',
-        };
-      case 'failed':
-        return {
-          title: 'Location Detection Failed',
-          description: geoState.errorMessage || 'Unable to detect your location. Please search by city or country name below.',
-          icon: <AlertCircle className="h-4 w-4 text-yellow-600" />,
-          variant: 'warning',
-        };
+        return geoState.locationSource === 'GPS' 
+          ? 'Location detected via GPS' 
+          : 'Location detected via IP';
       default:
         return null;
     }
   };
 
-  const stageMessage = getStageMessage();
-  const isDetecting = ['requesting-permission', 'detecting-gps-high', 'detecting-gps-low', 'fallback-ip', 'validating'].includes(geoState.stage);
+  const detectionMessage = getDetectionMessage();
+
+  const formatAccuracy = (meters: number | null): string => {
+    if (meters === null) return 'N/A';
+    if (meters < 1000) return `${Math.round(meters)}m`;
+    return `${(meters / 1000).toFixed(1)}km`;
+  };
+
+  const formatTimestamp = (date: Date | null): string => {
+    if (!date) return 'N/A';
+    return date.toLocaleTimeString();
+  };
 
   return (
-    <section className="relative overflow-hidden">
-      <div className="absolute inset-0 -z-10">
-        <img 
-          src="/assets/generated/halal-food-hero.dim_1200x400.png" 
-          alt="Halal Food" 
-          className="h-full w-full object-cover opacity-20 dark:opacity-10"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-background/80 via-background/90 to-background" />
-      </div>
-
-      <div className="container py-12 md:py-20">
-        <div className="mx-auto max-w-3xl space-y-8 text-center">
-          <div className="space-y-4">
-            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
-              Find Halal Restaurants
-              <span className="block text-halal">Near You</span>
-            </h2>
-            <p className="text-lg text-muted-foreground">
-              Discover authentic halal dining options locally and around the world
+    <section className="relative py-16 px-4 bg-gradient-to-b from-halal/5 to-background">
+      <div className="container max-w-4xl">
+        <div className="text-center mb-8">
+          {/* Arabic Welcome */}
+          <div className="mb-4" dir="rtl" lang="ar">
+            <p className="text-2xl md:text-3xl font-semibold text-halal">
+              مرحباً بكم
             </p>
           </div>
-
-          {stageMessage && (
-            <Alert className={`text-left ${
-              stageMessage.variant === 'info'
-                ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
-                : stageMessage.variant === 'warning'
-                ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-950/20'
-                : 'border-halal/50 bg-halal/5'
-            }`}>
-              {stageMessage.icon}
-              <AlertTitle className={
-                stageMessage.variant === 'info'
-                  ? 'text-blue-900 dark:text-blue-100'
-                  : stageMessage.variant === 'warning'
-                  ? 'text-yellow-900 dark:text-yellow-100'
-                  : 'text-halal'
-              }>
-                {stageMessage.title}
-              </AlertTitle>
-              <AlertDescription className={
-                stageMessage.variant === 'info'
-                  ? 'text-blue-800 dark:text-blue-200'
-                  : stageMessage.variant === 'warning'
-                  ? 'text-yellow-800 dark:text-yellow-200'
-                  : ''
-              }>
-                {stageMessage.description}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <div className="space-y-4">
-            <Card className="p-6 shadow-lg">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <MapPin className="h-4 w-4 text-halal" />
-                  <span>Search by Location</span>
-                  {geoState.locationSource === 'IP' && (
-                    <span className="ml-auto text-xs text-blue-600 dark:text-blue-400">(IP-Based)</span>
-                  )}
-                  {geoState.locationSource === 'GPS' && (
-                    <span className="ml-auto text-xs text-halal">(GPS)</span>
-                  )}
-                </div>
-                
-                <div className="flex gap-2">
-                  <Button
-                    onClick={requestGeolocation}
-                    disabled={isLoading || isDetecting || isIPLoading || geoState.stage === 'not-secure'}
-                    size="lg"
-                    className="flex-1 bg-halal hover:bg-halal-dark text-white disabled:opacity-50"
-                  >
-                    {isDetecting || isIPLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        {geoState.stage === 'fallback-ip'
-                          ? 'Using IP Location...' 
-                          : geoState.stage === 'detecting-gps-low'
-                          ? 'Retrying GPS...'
-                          : 'Detecting Location...'}
-                      </>
-                    ) : (
-                      <>
-                        <MapPin className="mr-2 h-5 w-5" />
-                        {geoState.coordinates ? 'Refresh Location' : 'Use My Current Location'}
-                      </>
-                    )}
-                  </Button>
-                  
-                  {geoState.canRetry && geoState.stage !== 'idle' && !isDetecting && geoState.stage !== 'not-secure' && (
-                    <Button
-                      onClick={handleRetryLocation}
-                      disabled={isLoading || isDetecting || isIPLoading}
-                      size="lg"
-                      variant="outline"
-                      className="border-halal text-halal hover:bg-halal hover:text-white"
-                      title="Retry location detection"
-                    >
-                      <RefreshCw className="h-5 w-5" />
-                    </Button>
-                  )}
-                </div>
-                
-                <p className="text-xs text-muted-foreground">
-                  {isDetecting 
-                    ? geoState.stage === 'fallback-ip'
-                      ? 'Determining your approximate location via IP address...'
-                      : geoState.stage === 'detecting-gps-low'
-                      ? 'Retrying GPS with adjusted settings...'
-                      : 'Requesting GPS access for precise location...'
-                    : geoState.coordinates
-                    ? geoState.locationSource === 'GPS'
-                      ? 'GPS location detected successfully! Click to refresh your location.'
-                      : 'Using approximate IP-based location. Enable GPS for more accurate results.'
-                    : geoState.stage === 'not-secure'
-                    ? 'GPS requires HTTPS. Use city search below instead.'
-                    : 'Click to detect your location automatically (GPS with IP fallback)'}
-                </p>
-              </div>
-            </Card>
-
-            <Card className="p-6 shadow-lg">
-              <form onSubmit={handleCitySearch} className="space-y-4">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Search className="h-4 w-4 text-halal" />
-                  <span>Search by City or Country</span>
-                </div>
-                <div className="flex gap-2">
-                  <Input
-                    type="text"
-                    placeholder="Enter city name (e.g., London, Dubai, New York)"
-                    value={cityInput}
-                    onChange={(e) => setCityInput(e.target.value)}
-                    disabled={isLoading}
-                    className="flex-1"
-                  />
-                  <Button 
-                    type="submit" 
-                    disabled={isLoading || !cityInput.trim()}
-                    size="lg"
-                    className="bg-halal hover:bg-halal-dark text-white"
-                  >
-                    {isLoading ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <Search className="h-5 w-5" />
-                    )}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Search for halal restaurants in any city or country worldwide
-                </p>
-              </form>
-            </Card>
-          </div>
+          
+          <h1 className="text-4xl md:text-5xl font-bold mb-4 text-foreground">
+            Find Halal Food Near You
+          </h1>
+          <p className="text-lg text-muted-foreground">
+            Discover halal restaurants, cafes, and shops worldwide
+          </p>
         </div>
+
+        <Card className="p-6 shadow-lg">
+          <div className="space-y-6">
+            {/* Location Detection */}
+            <div className="space-y-3">
+              <Button
+                onClick={handleDetectLocation}
+                disabled={isLoading || isDetecting || !geoState.canRetry || geoWatch.isTracking}
+                size="lg"
+                className="w-full"
+              >
+                {isDetecting ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    {detectionMessage}
+                  </>
+                ) : (
+                  <>
+                    <Navigation className="mr-2 h-5 w-5" />
+                    Detect My Location
+                  </>
+                )}
+              </Button>
+
+              {/* Continuous Tracking Controls */}
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleStartTracking}
+                  disabled={geoWatch.isTracking || isLoading || isDetecting}
+                  variant="outline"
+                  size="lg"
+                  className="flex-1"
+                >
+                  <Play className="mr-2 h-4 w-4" />
+                  Start Tracking
+                </Button>
+                <Button
+                  onClick={handleStopTracking}
+                  disabled={!geoWatch.isTracking || isLoading}
+                  variant="outline"
+                  size="lg"
+                  className="flex-1"
+                >
+                  <Square className="mr-2 h-4 w-4" />
+                  Stop Tracking
+                </Button>
+              </div>
+
+              {geoWatch.isTracking && (
+                <Alert className="bg-halal/10 border-halal">
+                  <Navigation className="h-4 w-4 text-halal animate-pulse" />
+                  <AlertDescription>
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">Continuous tracking active</span>
+                      <Badge variant="outline" className="bg-halal/20 text-halal border-halal">
+                        Live
+                      </Badge>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {geoWatch.error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Tracking Error</AlertTitle>
+                  <AlertDescription>
+                    {geoWatch.error}
+                    {geoWatch.canRetry && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleStartTracking}
+                        className="mt-3"
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Retry
+                      </Button>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {geoState.stage === 'success' && geoState.coordinates && (
+                <Alert className="bg-halal/10 border-halal">
+                  <CheckCircle className="h-4 w-4 text-halal" />
+                  <AlertDescription>
+                    {geoState.locationSource === 'GPS' ? 'GPS location detected' : 'IP-based location detected'}
+                    {geoState.city && geoState.country && ` - ${geoState.city}, ${geoState.country}`}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {geoState.errorMessage && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Location Detection Failed</AlertTitle>
+                  <AlertDescription className="mt-2">
+                    {geoState.errorMessage}
+                    {geoState.canRetry && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRetry}
+                        className="mt-3"
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Try Again
+                      </Button>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {geoState.stage === 'not-secure' && (
+                <Alert variant="destructive">
+                  <ShieldAlert className="h-4 w-4" />
+                  <AlertTitle>Secure Connection Required</AlertTitle>
+                  <AlertDescription>
+                    Location detection requires HTTPS. Please use the secure version of this site or search by city name.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {geoState.stage === 'not-supported' && (
+                <Alert variant="destructive">
+                  <XCircle className="h-4 w-4" />
+                  <AlertTitle>Not Supported</AlertTitle>
+                  <AlertDescription>
+                    Your browser does not support location detection. Please search by city name instead.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* City Search */}
+            <form onSubmit={handleCitySearch} className="space-y-3">
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  placeholder="Search by city or country (e.g., London, Dubai)"
+                  value={cityInput}
+                  onChange={(e) => setCityInput(e.target.value)}
+                  className="flex-1"
+                />
+                <Button type="submit" disabled={isLoading || !cityInput.trim()}>
+                  <Search className="mr-2 h-4 w-4" />
+                  Search
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Enter a city or country name to find halal restaurants in that area
+              </p>
+            </form>
+
+            {/* Location Diagnostics Panel */}
+            {(geoWatch.isTracking || geoWatch.position) && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Info className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="text-sm font-medium">Location Diagnostics</h3>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Status</div>
+                      <div className="font-medium capitalize">{geoWatch.status}</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Source</div>
+                      <div className="font-medium">{geoWatch.source || 'N/A'}</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Accuracy</div>
+                      <div className="font-medium">{formatAccuracy(geoWatch.accuracy)}</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Last Update</div>
+                      <div className="font-medium">{formatTimestamp(geoWatch.lastUpdate)}</div>
+                    </div>
+                    {geoWatch.position && (
+                      <>
+                        <div className="space-y-1">
+                          <div className="text-muted-foreground">Latitude</div>
+                          <div className="font-mono text-xs">{geoWatch.position.coords.latitude.toFixed(6)}</div>
+                        </div>
+                        <div className="space-y-1">
+                          <div className="text-muted-foreground">Longitude</div>
+                          <div className="font-mono text-xs">{geoWatch.position.coords.longitude.toFixed(6)}</div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs pt-2 border-t">
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Secure Context</div>
+                      <div className="font-medium">{diagnostics.isSecureContext ? 'Yes' : 'No'}</div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-muted-foreground">Geolocation API</div>
+                      <div className="font-medium">{diagnostics.isGeolocationSupported ? 'Supported' : 'Not Supported'}</div>
+                    </div>
+                    <div className="space-y-1 col-span-2">
+                      <div className="text-muted-foreground">Permission State</div>
+                      <div className="font-medium capitalize">{diagnostics.permissionState || 'Unknown'}</div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </Card>
       </div>
     </section>
   );

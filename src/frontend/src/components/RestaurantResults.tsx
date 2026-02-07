@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Map, List, X, AlertCircle, RefreshCw, Shield, Loader2 } from 'lucide-react';
+import { Map, List, X, AlertCircle, RefreshCw, Shield, Loader2, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -17,6 +17,7 @@ interface RestaurantResultsProps {
   isRetrying?: boolean;
   retryCount?: number;
   safeMode?: boolean;
+  isAuthError?: boolean;
   onClear: () => void;
   onExitSafeMode?: () => void;
 }
@@ -28,6 +29,7 @@ export function RestaurantResults({
   isRetrying = false,
   retryCount = 0,
   safeMode = false,
+  isAuthError = false,
   onClear,
   onExitSafeMode,
 }: RestaurantResultsProps) {
@@ -89,29 +91,57 @@ export function RestaurantResults({
       <section className="container py-8">
         <Alert variant="destructive" className="mx-auto max-w-2xl">
           <AlertCircle className="h-5 w-5" />
-          <AlertTitle className="text-lg font-semibold">Search Temporarily Unavailable</AlertTitle>
+          <AlertTitle className="text-lg font-semibold">
+            {isAuthError ? 'Authentication Required' : 'Search Temporarily Unavailable'}
+          </AlertTitle>
           <AlertDescription className="mt-2 space-y-4">
             <p>{error}</p>
-            <div className="flex flex-wrap gap-2">
-              <Button onClick={onClear} variant="outline" size="sm">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Try Again
-              </Button>
-              <Button 
-                onClick={() => window.location.reload()} 
-                variant="outline" 
-                size="sm"
-              >
-                Refresh Page
-              </Button>
-            </div>
+            
+            {isAuthError ? (
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={onClear} variant="outline" size="sm">
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Go to Login
+                </Button>
+                <Button onClick={onClear} variant="outline" size="sm">
+                  Clear & Try Again
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={onClear} variant="outline" size="sm">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Try Again
+                </Button>
+                <Button 
+                  onClick={() => window.location.reload()} 
+                  variant="outline" 
+                  size="sm"
+                >
+                  Refresh Page
+                </Button>
+              </div>
+            )}
+            
             <div className="rounded-md bg-muted/50 p-3">
-              <p className="text-xs font-medium">Recovery Tips:</p>
+              <p className="text-xs font-medium">
+                {isAuthError ? 'What you can do:' : 'Recovery Tips:'}
+              </p>
               <ul className="mt-1 list-inside list-disc space-y-1 text-xs text-muted-foreground">
-                <li>The service automatically retries failed requests</li>
-                <li>Try searching by city name if location search fails</li>
-                <li>Wait a moment and try again if you see this message</li>
-                <li>Refresh the page to restart the connection</li>
+                {isAuthError ? (
+                  <>
+                    <li>Log in with your account to access location search features</li>
+                    <li>City search is available without logging in</li>
+                    <li>Contact support if you believe you should have access</li>
+                  </>
+                ) : (
+                  <>
+                    <li>The service automatically retries failed requests</li>
+                    <li>Try searching by city name if location search fails</li>
+                    <li>Wait a moment and try again if you see this message</li>
+                    <li>Refresh the page to restart the connection</li>
+                  </>
+                )}
               </ul>
             </div>
           </AlertDescription>
