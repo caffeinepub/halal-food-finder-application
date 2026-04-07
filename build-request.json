@@ -1,0 +1,86 @@
+{
+  "kind": "build_request",
+  "title": "Stabilize location detection and restore visit counter display",
+  "priority": "normal",
+  "requirements": [
+    {
+      "id": "REQ-1",
+      "text": "Reduce perceived instability in location detection and tracking by preventing conflicting location workflows and by throttling/reducing noisy updates.\n\nContext: The app supports one-time GPS detection (with GPS->IP fallback) and continuous tracking via `watchPosition`. Users report that “web site location unstable”.\n\nImplement the following behaviors:\n- If continuous tracking is active, disable or clearly gate the one-time “Detect My Location” flow so the two mechanisms do not compete.\n- Add throttling/debouncing to continuous tracking-triggered searches so location-based searches are not triggered too frequently even when coordinates jitter; keep the existing “significant change” check but also enforce a minimum time interval between searches.\n- Reduce user-facing noise: avoid firing a success toast on every tracking update; only toast on tracking start/stop and on meaningful state changes (e.g., first fix acquired, permission denied, tracking error).\n- Ensure tracking can recover cleanly from transient errors: if `watchPosition` emits a TIMEOUT/POSITION_UNAVAILABLE error, reflect it in UI state without leaving the app stuck in an in-flight state, and allow the user to stop/restart tracking.",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-5"
+        ],
+        "quotes": [
+          "web site location unstable and counter missing?"
+        ]
+      },
+      "acceptanceCriteria": [
+        "When continuous tracking is active, the one-time location detection flow cannot run concurrently (UI prevents it or stopping tracking is required first).",
+        "Continuous tracking updates do not trigger repeated searches more often than the configured minimum interval, even if the device reports frequent small position changes.",
+        "While tracking, the app does not show a success toast for every update; toasts occur only for start/stop and meaningful state transitions (e.g., first fix, errors).",
+        "If the browser reports transient watch errors (TIMEOUT/POSITION_UNAVAILABLE), the UI reflects the error and the user can stop and restart tracking without needing a full page refresh."
+      ]
+    },
+    {
+      "id": "REQ-2",
+      "text": "Restore and harden the visit counter so it is visible even when backend calls fail, and provide a clear fallback UI.\n\nContext: `App.tsx` fetches `totalVisits` via `useTrafficCounter()` and passes values to `Footer`, but the footer currently hides the counter entirely when `counterError` is true.\n\nImplement the following:\n- Always render a “Total visits” row in the footer. If the counter fails, show a non-blocking fallback such as “Total visits: unavailable” (English text).\n- Add a lightweight retry strategy on the frontend for the counter fetch/increment (e.g., one retry after a short delay) so transient actor/network failures in production don’t permanently hide the counter for the session.\n- Keep the rest of the app functional even if the counter fails (no hard errors).",
+      "target": "frontend",
+      "source": {
+        "messageIds": [
+          "msg-5"
+        ],
+        "quotes": [
+          "web site location unstable and counter missing?"
+        ]
+      },
+      "acceptanceCriteria": [
+        "The footer always shows a “Total visits:” label; when the counter cannot be retrieved it displays an English fallback value (e.g., “unavailable”) instead of hiding the row.",
+        "A transient failure to call the backend counter methods triggers an automatic retry at least once, without blocking the main UI.",
+        "Counter failures do not crash the app and do not prevent searching/browsing results."
+      ]
+    },
+    {
+      "id": "REQ-3",
+      "text": "Persist the page view counter across future backend upgrades.\n\nContext: `backend/main.mo` stores `pageViews` in a non-stable variable, which will reset on canister upgrade.\n\nUpdate the backend so:\n- The page view counter value is stored in stable canister state so it survives future upgrades.\n- `incrementPageViews()` and `getPageViews()` continue to work with the same signatures.",
+      "target": "backend",
+      "source": {
+        "messageIds": [
+          "msg-5"
+        ],
+        "quotes": [
+          "web site location unstable and counter missing?"
+        ]
+      },
+      "acceptanceCriteria": [
+        "After a canister upgrade, the page view counter value remains the same as before the upgrade (no reset) for upgrades performed after this change is deployed.",
+        "The existing frontend counter hook continues to call `incrementPageViews()` and `getPageViews()` without any interface changes."
+      ]
+    }
+  ],
+  "constraints": [
+    "Use English for any user-facing text.",
+    "Backend must remain a single Motoko actor in backend/main.mo.",
+    "Do not edit files under frontend/src/components/ui or any frontend immutablePaths.",
+    "Do not introduce external databases or third-party auth beyond Internet Identity."
+  ],
+  "nonGoals": [
+    "Changing the restaurant search algorithm or data sources (Overpass/Foursquare) beyond what is required for location stability.",
+    "Adding new analytics features beyond the existing total visit counter.",
+    "Implementing real-time/live multi-user presence or websockets."
+  ],
+  "imageRequirements": {
+    "required": [],
+    "edits": []
+  },
+  "userProfileUpdate": {
+    "goalsToAdd": [],
+    "goalsToRemove": [],
+    "preferencesToAdd": [],
+    "preferencesToRemove": [],
+    "miscToAdd": [],
+    "miscToRemove": [],
+    "fieldsToSet": {},
+    "fieldsToDelete": []
+  }
+}
